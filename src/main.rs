@@ -101,9 +101,9 @@ struct OutputLine {
 async fn main() {
     println!("p,q,prime(M(p)*M(q)-2),Source,prime(M(p)*M(q)+2),Source");
     let mut output_lines = Vec::new();
-    for p_i in 0..MERSENNE_EXPONENTS.len() {
+    for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
-        for q_i in p_i..MERSENNE_EXPONENTS.len() {
+        for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
             let q = MERSENNE_EXPONENTS[q_i];
             if p + q <= 64 {
                 let m_p = (1u64 << p) - 1;
