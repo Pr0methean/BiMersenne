@@ -25,7 +25,7 @@ static BUFFER: OnceLock<NaiveBuffer> = OnceLock::new();
 static PRIMES_AS_BIGUINT: OnceLock<Box<[BigUint]>> = OnceLock::new();
 static MIN_ROOT_BITS: OnceLock<u64> = OnceLock::new();
 
-fn is_prime_with_trials(product: &BigUint) -> PrimalityResult {
+fn is_prime_with_trials(num: &BigUint, known_non_factors: Vec<BigUint>) -> PrimalityResult {
     let buffer = BUFFER.get_or_init(|| {
         let mut buffer = NaiveBuffer::new();
         buffer.reserve(NUM_TRIAL_DIVISIONS.max(NUM_TRIAL_ROOTS) as u64);
@@ -47,27 +47,27 @@ fn is_prime_with_trials(product: &BigUint) -> PrimalityResult {
         primes_as_biguint.last().unwrap().bits()
     });
     for prime in primes_as_biguint.iter() {
-        if product.is_multiple_of(prime) {
+        if !known_non_factors.contains(prime) && num.is_multiple_of(prime) {
             return PrimalityResult {
                 result: No,
                 source: format!("Trial division by {}", prime).into()
             };
         }
     }
-    let product_bits = product.bits();
+    let product_bits = num.bits();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
         if prime.bits() as u64 * min_root_bits > product_bits {
             // Higher roots would've been found by trial divisions already
             break;
         }
-        if product.is_nth_power(prime as u32) {
+        if num.is_nth_power(prime as u32) {
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}", prime).into()
             };
         }
     }
-    let result = buffer.is_prime(product, *config);
+    let result = buffer.is_prime(num, *config);
     PrimalityResult {
         result,
         source: "is_prime".into()
@@ -98,10 +98,11 @@ async fn main() {
     let mut output_lines = Vec::new();
     for p_i in 0..MERSENNE_EXPONENTS.len() {
         let p = MERSENNE_EXPONENTS[p_i];
-        let m_p = (1u64 << p) - 1;
+        let m_p_big = one().shl(p).sub(one());
         for q_i in p_i..MERSENNE_EXPONENTS.len() {
             let q = MERSENNE_EXPONENTS[q_i];
             if p + q <= 64 {
+                let m_p = (1u64 << p) - 1;
                 let m_q = (1u64 << q) - 1;
                 let product = m_p * m_q;
                 output_lines.push(OutputLine {
@@ -121,6 +122,7 @@ async fn main() {
                     })
                 });
             } else if p + q <= 128 {
+                let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let product = m_p as u128 * m_q;
                 output_lines.push(OutputLine {
@@ -140,6 +142,9 @@ async fn main() {
                     }),
                 });
             } else {
+                let m_q_big = one().shl(q).sub(one());
+                let known_non_factors_1 = vec![m_p_big.clone(), m_q_big.clone()];
+                let known_non_factors_2 = vec![m_p_big.clone(), m_q_big];
                 let product_m1: BigUint = one().shl(p+q)
                     .sub(one().shl(p))
                     .sub(one().shl(q));
@@ -149,10 +154,10 @@ async fn main() {
                     p,
                     q,
                     result_product_minus_2: tokio::spawn(async move {
-                        is_prime_with_trials(&product_m2)
+                        is_prime_with_trials(&product_m2, known_non_factors_1)
                     }).into(),
                     result_product_plus_2: tokio::spawn(async move {
-                        is_prime_with_trials(&product_p2)
+                        is_prime_with_trials(&product_p2, known_non_factors_2)
                     }).into()
                 });
             }
