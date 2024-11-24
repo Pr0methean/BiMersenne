@@ -72,7 +72,7 @@ fn is_prime_with_trials(num: &BigUint, known_non_factors: &[BigUint]) -> Primali
     let instant = time::Instant::now();
     let result = buffer.is_prime(num, *config);
     let elapsed = instant.elapsed();
-    eprintln!("is_prime for a {}-bit number took {}ns", num_bits, elapsed.as_nanos());
+    eprintln!("is_prime for a {}-bit number took {}ns and returned {:?}", num_bits, elapsed.as_nanos(), result);
     PrimalityResult {
         result,
         source: "is_prime".into()
