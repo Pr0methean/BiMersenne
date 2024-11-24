@@ -5,7 +5,7 @@ use num_prime::nt_funcs::{factorize128, is_prime64};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig, PrimeBuffer};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, Shl, Sub};
+use std::ops::{Shl, Sub};
 use std::sync::OnceLock;
 use std::time;
 use tokio::task::JoinHandle;
@@ -102,12 +102,12 @@ impl Display for PrimalityResult {
 struct OutputLine {
     p: u32,
     q: u32,
-    result_product_plus_2: JoinHandle<PrimalityResult>,
+    result_product_minus_2: JoinHandle<PrimalityResult>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    println!("p,q,prime(M(p)*M(q)-2),Source,prime(M(p)*M(q)+2),Source");
+    println!("p,q,prime(M(p)*M(q)-2),Source");
     let mut output_lines = Vec::new();
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
@@ -120,9 +120,9 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
-                    result_product_plus_2: tokio::spawn(async move {
+                    result_product_minus_2: tokio::spawn(async move {
                         PrimalityResult {
-                            result: if is_prime64(product + 2) { Yes } else { No },
+                            result: if is_prime64(product - 2) { Yes } else { No },
                             source: "is_prime64".into(),
                         }
                     }),
@@ -134,9 +134,9 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
-                    result_product_plus_2: tokio::spawn(async move {
+                    result_product_minus_2: tokio::spawn(async move {
                         PrimalityResult {
-                            result: if factorize128(product + 2).into_values().sum::<usize>() == 1 {
+                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
                                 Yes
                             } else {
                                 No
@@ -156,9 +156,9 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
-                    result_product_plus_2: tokio::spawn(async move {
-                        let product_p2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(three());
-                        is_prime_with_trials(product_p2, &known_non_factors)
+                    result_product_minus_2: tokio::spawn(async move {
+                        let product_m2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one());
+                        is_prime_with_trials(product_m2, &known_non_factors)
                     })
                     .into(),
                 });
@@ -169,7 +169,7 @@ async fn main() {
     for line in output_lines.into_iter() {
         let p = line.p;
         let q = line.q;
-        let result_product_plus_2 = line.result_product_plus_2.await.unwrap();
+        let result_product_plus_2 = line.result_product_minus_2.await.unwrap();
         println!(
             "{}, {}, {}",
             p, q, result_product_plus_2
