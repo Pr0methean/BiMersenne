@@ -93,8 +93,8 @@ impl Display for PrimalityResult {
 struct OutputLine {
     p: u32,
     q: u32,
-    result_product_minus_2: JoinHandle<PrimalityResult>,
-    result_product_plus_2: JoinHandle<PrimalityResult>
+    result_product_plus_2: JoinHandle<PrimalityResult>,
+    result_product_minus_2: JoinHandle<PrimalityResult>
 }
 
 #[tokio::main(flavor = "multi_thread", )]
@@ -112,18 +112,18 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
+                    result_product_plus_2: tokio::spawn(async move {
+                        PrimalityResult {
+                            result: if is_prime64(product + 2) { Yes } else { No },
+                            source: "is_prime64".into()
+                        }
+                    }),
                     result_product_minus_2: tokio::spawn(async move {
                         PrimalityResult {
                             result: if is_prime64(product - 2) { Yes } else { No },
                             source: "is_prime64".into()
                         }
                     }),
-                    result_product_plus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if is_prime64(product + 2) { Yes } else { No },
-                            source: "is_prime64".into()
-                        }
-                    })
                 });
             } else if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
@@ -132,15 +132,15 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
-                    result_product_minus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 { Yes } else { No },
-                            source: "factorize128".into()
-                        }
-                    }),
                     result_product_plus_2: tokio::spawn(async move {
                         PrimalityResult {
                             result: if factorize128(product + 2).into_values().sum::<usize>() == 1 { Yes } else { No },
+                            source: "factorize128".into()
+                        }
+                    }),
+                    result_product_minus_2: tokio::spawn(async move {
+                        PrimalityResult {
+                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 { Yes } else { No },
                             source: "factorize128".into()
                         }
                     }),
@@ -162,12 +162,12 @@ async fn main() {
                 output_lines.push(OutputLine {
                     p,
                     q,
+                    result_product_plus_2: tokio::spawn(async move {
+                        is_prime_with_trials(&product_p2, &known_non_factors_copy)
+                    }).into(),
                     result_product_minus_2: tokio::spawn(async move {
                         is_prime_with_trials(&product_m2, &known_non_factors)
                     }).into(),
-                    result_product_plus_2: tokio::spawn(async move {
-                        is_prime_with_trials(&product_p2, &known_non_factors_copy)
-                    }).into()
                 });
             }
         }
