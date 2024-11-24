@@ -5,6 +5,7 @@ use num_prime::nt_funcs::{factorize128, is_prime64};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig, PrimeBuffer};
 use std::ops::{Add, Shl, Sub};
 use std::sync::OnceLock;
+use std::time;
 use num_integer::Integer;
 use num_prime::buffer::{NaiveBuffer, PrimeBufferExt};
 use Primality::{No, Yes};
@@ -54,9 +55,9 @@ fn is_prime_with_trials(num: &BigUint, known_non_factors: &[BigUint]) -> Primali
             };
         }
     }
-    let product_bits = num.bits();
+    let num_bits = num.bits();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
-        if prime.bits() as u64 * min_root_bits > product_bits {
+        if prime.bits() as u64 * min_root_bits > num_bits {
             // Higher roots would've been found by trial divisions already
             break;
         }
@@ -67,7 +68,11 @@ fn is_prime_with_trials(num: &BigUint, known_non_factors: &[BigUint]) -> Primali
             };
         }
     }
+    eprintln!("Calling is_prime for a {}-bit number", num_bits);
+    let instant = time::Instant::now();
     let result = buffer.is_prime(num, *config);
+    let elapsed = instant.elapsed();
+    eprintln!("is_prime for a {}-bit number took {}ns", num_bits, elapsed.as_nanos());
     PrimalityResult {
         result,
         source: "is_prime".into()
