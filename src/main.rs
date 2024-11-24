@@ -102,12 +102,11 @@ struct OutputLine {
     p: u32,
     q: u32,
     result_product_plus_2: JoinHandle<PrimalityResult>,
-    result_product_minus_2: JoinHandle<PrimalityResult>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    println!("p,q,prime(M(p)*M(q)-2),Source,prime(M(p)*M(q)+2),Source");
+    println!("p,q,prime(M(p)*M(q)+2),Source");
     let mut output_lines = Vec::new();
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
@@ -123,12 +122,6 @@ async fn main() {
                     result_product_plus_2: tokio::spawn(async move {
                         PrimalityResult {
                             result: if is_prime64(product + 2) { Yes } else { No },
-                            source: "is_prime64".into(),
-                        }
-                    }),
-                    result_product_minus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if is_prime64(product - 2) { Yes } else { No },
                             source: "is_prime64".into(),
                         }
                     }),
@@ -150,16 +143,6 @@ async fn main() {
                             source: "factorize128".into(),
                         }
                     }),
-                    result_product_minus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
-                                Yes
-                            } else {
-                                No
-                            },
-                            source: "factorize128".into(),
-                        }
-                    }),
                 });
             } else {
                 let mut known_non_factors = Vec::with_capacity(2);
@@ -169,19 +152,12 @@ async fn main() {
                 if q <= 63 {
                     known_non_factors.push(BigUint::from(1u64 << q - 1));
                 }
-                let known_non_factors_copy = known_non_factors.clone();
-                let product_m1: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q));
-                let product_m2 = product_m1.clone().sub(one());
-                let product_p2 = product_m1.add(three());
+                let product_p2 = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(one());
                 output_lines.push(OutputLine {
                     p,
                     q,
                     result_product_plus_2: tokio::spawn(async move {
-                        is_prime_with_trials(&product_p2, &known_non_factors_copy)
-                    })
-                    .into(),
-                    result_product_minus_2: tokio::spawn(async move {
-                        is_prime_with_trials(&product_m2, &known_non_factors)
+                        is_prime_with_trials(&product_p2, &known_non_factors)
                     })
                     .into(),
                 });
@@ -192,17 +168,12 @@ async fn main() {
     for line in output_lines.into_iter() {
         let p = line.p;
         let q = line.q;
-        let result_product_minus_2 = line.result_product_minus_2.await.unwrap();
         let result_product_plus_2 = line.result_product_plus_2.await.unwrap();
         println!(
-            "{}, {}, {}, {}",
-            p, q, result_product_minus_2, result_product_plus_2
+            "{}, {}, {}",
+            p, q, result_product_plus_2
         );
     }
-}
-
-fn three() -> BigUint {
-    BigUint::from(3u8)
 }
 
 fn one() -> BigUint {
