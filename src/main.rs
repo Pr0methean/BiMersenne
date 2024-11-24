@@ -170,17 +170,16 @@ async fn main() {
                     known_non_factors.push(BigUint::from(1u64 << q - 1));
                 }
                 let known_non_factors_copy = known_non_factors.clone();
-                let product_m1: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q));
-                let product_m2 = product_m1.clone().sub(one());
-                let product_p2 = product_m1.add(three());
                 output_lines.push(OutputLine {
                     p,
                     q,
                     result_product_plus_2: tokio::spawn(async move {
+                        let product_p2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(three());
                         is_prime_with_trials(&product_p2, &known_non_factors_copy)
                     })
                     .into(),
                     result_product_minus_2: tokio::spawn(async move {
+                        let product_m2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one());
                         is_prime_with_trials(&product_m2, &known_non_factors)
                     })
                     .into(),
