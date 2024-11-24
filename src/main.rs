@@ -25,7 +25,7 @@ static BUFFER: OnceLock<NaiveBuffer> = OnceLock::new();
 static PRIMES_AS_BIGUINT: OnceLock<Box<[BigUint]>> = OnceLock::new();
 static MIN_ROOT_BITS: OnceLock<u64> = OnceLock::new();
 
-fn is_prime_with_trials(num: &BigUint, known_non_factors: &[BigUint]) -> PrimalityResult {
+fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> PrimalityResult {
     let buffer = BUFFER.get_or_init(|| {
         let mut buffer = NaiveBuffer::new();
         buffer.reserve(NUM_TRIAL_DIVISIONS.max(NUM_TRIAL_ROOTS) as u64);
@@ -73,8 +73,9 @@ fn is_prime_with_trials(num: &BigUint, known_non_factors: &[BigUint]) -> Primali
     }
     eprintln!("Calling is_prime for a {}-bit number", num_bits);
     let instant = time::Instant::now();
-    let result = buffer.is_prime(num, *config);
+    let result = buffer.is_prime(&num, *config);
     let elapsed = instant.elapsed();
+    drop(num);
     eprintln!(
         "is_prime for a {}-bit number took {}ns and returned {:?}",
         num_bits,
@@ -157,7 +158,7 @@ async fn main() {
                     q,
                     result_product_plus_2: tokio::spawn(async move {
                         let product_p2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(three());
-                        is_prime_with_trials(&product_p2, &known_non_factors)
+                        is_prime_with_trials(product_p2, &known_non_factors)
                     })
                         .into(),
                 });
