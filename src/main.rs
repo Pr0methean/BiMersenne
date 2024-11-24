@@ -103,7 +103,6 @@ struct OutputLine {
     p: u32,
     q: u32,
     result_product_plus_2: JoinHandle<PrimalityResult>,
-    result_product_minus_2: JoinHandle<PrimalityResult>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -127,12 +126,6 @@ async fn main() {
                             source: "is_prime64".into(),
                         }
                     }),
-                    result_product_minus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if is_prime64(product - 2) { Yes } else { No },
-                            source: "is_prime64".into(),
-                        }
-                    }),
                 });
             } else if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
@@ -151,16 +144,6 @@ async fn main() {
                             source: "factorize128".into(),
                         }
                     }),
-                    result_product_minus_2: tokio::spawn(async move {
-                        PrimalityResult {
-                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
-                                Yes
-                            } else {
-                                No
-                            },
-                            source: "factorize128".into(),
-                        }
-                    }),
                 });
             } else {
                 let mut known_non_factors = Vec::with_capacity(2);
@@ -170,18 +153,12 @@ async fn main() {
                 if q <= 63 {
                     known_non_factors.push(BigUint::from(1u64 << q - 1));
                 }
-                let known_non_factors_copy = &known_non_factors.clone();
                 output_lines.push(OutputLine {
                     p,
                     q,
                     result_product_plus_2: tokio::spawn(async move {
                         let product_p2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(three());
-                        is_prime_with_trials(product_p2, &known_non_factors_copy)
-                    })
-                    .into(),
-                    result_product_minus_2: tokio::spawn(async move {
-                        let product_m2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one());
-                        is_prime_with_trials(product_m2, &known_non_factors)
+                        is_prime_with_trials(product_p2, &known_non_factors)
                     })
                     .into(),
                 });
@@ -192,11 +169,10 @@ async fn main() {
     for line in output_lines.into_iter() {
         let p = line.p;
         let q = line.q;
-        let result_product_minus_2 = line.result_product_minus_2.await.unwrap();
         let result_product_plus_2 = line.result_product_plus_2.await.unwrap();
         println!(
-            "{}, {}, {}, {}",
-            p, q, result_product_minus_2, result_product_plus_2
+            "{}, {}, {}",
+            p, q, result_product_plus_2
         );
     }
 }
