@@ -152,14 +152,14 @@ async fn main() {
                 if q <= 63 {
                     known_non_factors.push(BigUint::from(1u64 << q - 1));
                 }
-                let product_p2 = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(one());
                 output_lines.push(OutputLine {
                     p,
                     q,
                     result_product_plus_2: tokio::spawn(async move {
+                        let product_p2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).add(three());
                         is_prime_with_trials(&product_p2, &known_non_factors)
                     })
-                    .into(),
+                        .into(),
                 });
             }
         }
@@ -178,4 +178,8 @@ async fn main() {
 
 fn one() -> BigUint {
     BigUint::from(1u8)
+}
+
+fn three() -> BigUint {
+    BigUint::from(3u8)
 }
