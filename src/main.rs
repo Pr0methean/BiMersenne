@@ -50,8 +50,10 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
             .collect()
     });
     let min_root_bits = MIN_ROOT_BITS.get_or_init(|| primes_as_biguint.last().unwrap().bits());
+    let start_trials = time::Instant::now();
     for prime in primes_as_biguint.iter() {
         if !known_non_factors.contains(prime) && num.is_multiple_of(prime) {
+            eprintln!("Trial division succeeded in {}ns", start_trials.elapsed().as_nanos());
             return PrimalityResult {
                 result: No,
                 source: format!("Trial division by {}", prime).into(),
@@ -65,16 +67,18 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
             break;
         }
         if num.is_nth_power(prime as u32) {
+            eprintln!("Trial root succeeded in {}ns", start_trials.elapsed().as_nanos());
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}", prime).into(),
             };
         }
     }
-    eprintln!("Calling is_prime for a {}-bit number", num_bits);
-    let instant = time::Instant::now();
+    eprintln!("Trial divisions and roots failed in {}ns for a {}-bit number; calling is_prime",
+              start_trials.elapsed().as_nanos(), num_bits);
+    let start_is_prime = time::Instant::now();
     let result = buffer.is_prime(&num, *config);
-    let elapsed = instant.elapsed();
+    let elapsed = start_is_prime.elapsed();
     drop(num);
     eprintln!(
         "is_prime for a {}-bit number took {}ns and returned {:?}",
