@@ -157,7 +157,19 @@ async fn main() {
                     p,
                     q,
                     result_product_minus_2: tokio::spawn(async move {
-                        let product_m2: BigUint = one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one());
+                        let mut product_limbs = vec![u32::MAX; (p + q) as usize / 32];
+                        if (p + q) % 32 != 0 {
+                            product_limbs.push((1 << ((p + q) % 32)) - 1);
+                        }
+                        let mut product_m2: BigUint = BigUint::new(product_limbs);
+                        debug_assert!(product_m2 == one().shl(p + q).sub(one()));
+                        if p == q {
+                            product_m2.set_bit(p as u64 + 1, false);
+                        } else {
+                            product_m2.set_bit(p as u64, false);
+                            product_m2.set_bit(q as u64, false);
+                        }
+                        debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
                         is_prime_with_trials(product_m2, &known_non_factors)
                     })
                     .into(),
