@@ -50,32 +50,34 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
             .collect()
     });
     let min_root_bits = MIN_ROOT_BITS.get_or_init(|| primes_as_biguint.last().unwrap().bits());
+    let num_bits = num.bits();
     let start_trials = time::Instant::now();
     for prime in primes_as_biguint.iter() {
         if !known_non_factors.contains(prime) && num.is_multiple_of(prime) {
-            eprintln!("Trial division succeeded in {}ns", start_trials.elapsed().as_nanos());
+            eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
+                      prime, num_bits, start_trials.elapsed().as_nanos());
             return PrimalityResult {
                 result: No,
                 source: format!("Trial division by {}", prime).into(),
             };
         }
     }
-    let num_bits = num.bits();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
         if prime.bits() as u64 * min_root_bits > num_bits {
             // Higher roots would've been found by trial divisions already
             break;
         }
         if num.is_nth_power(prime as u32) {
-            eprintln!("Trial root succeeded in {}ns", start_trials.elapsed().as_nanos());
+            eprintln!("Trial root found {} root of a {}-bit number in {}ns",
+                      prime, num_bits, start_trials.elapsed().as_nanos());
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}", prime).into(),
             };
         }
     }
-    eprintln!("Trial divisions and roots failed in {}ns for a {}-bit number; calling is_prime",
-              start_trials.elapsed().as_nanos(), num_bits);
+    eprintln!("Trial divisions and roots failed for a {}-bit number in {} ns; calling is_prime",
+              num_bits, start_trials.elapsed().as_nanos());
     let start_is_prime = time::Instant::now();
     let result = buffer.is_prime(&num, *config);
     let elapsed = start_is_prime.elapsed();
