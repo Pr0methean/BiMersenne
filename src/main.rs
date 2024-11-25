@@ -17,7 +17,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const NUM_TRIAL_DIVISIONS: usize = 2 << 12;
+pub const NUM_TRIAL_DIVISIONS: usize = 2 << 15;
 pub const NUM_TRIAL_ROOTS: usize = 2 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
@@ -109,6 +109,7 @@ struct OutputLine {
 async fn main() {
     println!("p,q,prime(M(p)*M(q)-2),Source");
     let mut output_lines = Vec::new();
+    let mut is_prime_calls = 0;
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
         for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
@@ -146,6 +147,7 @@ async fn main() {
                     }),
                 });
             } else {
+                is_prime_calls += 1;
                 let mut known_non_factors = Vec::with_capacity(2);
                 if p <= 63 {
                     known_non_factors.push(BigUint::from(1u64 << p - 1));
@@ -177,7 +179,7 @@ async fn main() {
             }
         }
     }
-    eprintln!("All computation tasks launched");
+    eprintln!("All computation tasks launched; {} will use is_prime or trial divisions", is_prime_calls);
     for line in output_lines.into_iter() {
         let p = line.p;
         let q = line.q;
