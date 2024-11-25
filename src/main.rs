@@ -189,10 +189,6 @@ async fn main() {
     }
 }
 
-fn three() -> BigUint {
-    BigUint::from(3u8)
-}
-
 fn one() -> BigUint {
     BigUint::from(1u8)
 }
