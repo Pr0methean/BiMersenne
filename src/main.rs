@@ -29,7 +29,11 @@ static MIN_ROOT_BITS: OnceLock<u64> = OnceLock::new();
 fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> PrimalityResult {
     let buffer = BUFFER.get_or_init(|| {
         let mut buffer = NaiveBuffer::new();
-        buffer.reserve(NUM_TRIAL_DIVISIONS.max(NUM_TRIAL_ROOTS) as u64);
+        let desired_len = NUM_TRIAL_DIVISIONS.max(NUM_TRIAL_ROOTS) as u64;
+        buffer.reserve(desired_len);
+        while buffer.iter().len() < desired_len as usize {
+            buffer.reserve(buffer.iter().last().unwrap() * 2);
+        }
         buffer
     });
     let config = CONFIG.get_or_init(|| {
