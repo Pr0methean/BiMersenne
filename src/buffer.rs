@@ -39,14 +39,17 @@ impl ConcurrentPrimeBuffer {
     }
 
     pub fn get_nth(&self, n: u64) -> u64 {
-        while self.0.read().len() < n as usize {
+        while self.0.read().len() * 2 < n as usize {
             self.reserve_concurrent(self.bound() * 2);
+        }
+        while self.0.read().len() < n as usize {
+            self.reserve_concurrent(self.bound() + n);
         }
         self.0.read()[n as usize]
     }
 
     pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
-        self.reserve_concurrent(limit + 65536);
+        self.reserve_concurrent(limit);
         let position = match self.0.read().binary_search(&limit) {
             Ok(p) => p + 1,
             Err(p) => p,
