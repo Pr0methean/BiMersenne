@@ -43,10 +43,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
     let buffer = BUFFER.get_or_init(ConcurrentPrimeBuffer::new);
-    while (buffer.len() as u64) < num_trial_divisions {
-        buffer.reserve(buffer.bound() * 2);
-    }
-    for prime in buffer.primes(buffer[num_trial_divisions]) {
+    for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
         if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
             eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
                       prime, num_bits, start_trials.elapsed().as_nanos());
@@ -64,7 +61,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     }
     let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = time::Instant::now();
-    for prime in buffer.primes(buffer[NUM_TRIAL_ROOTS]) {
+    for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
         if prime == 2 && num_bits < 100_000_000 {
             // Previous runs have ruled out numbers in this range being perfect squares
             continue;

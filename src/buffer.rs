@@ -1,4 +1,3 @@
-use std::ops::Index;
 use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
@@ -11,12 +10,6 @@ use rand::rngs::ThreadRng;
 use rand::RngCore;
 
 pub struct ConcurrentPrimeBuffer(RwLock<Vec<u64>>);
-
-impl ConcurrentPrimeBuffer {
-    pub fn len(&self) -> usize {
-        self.0.read().len()
-    }
-}
 
 pub struct ConcurrentPrimeBufferIter<'a> {
     buffer: &'a ConcurrentPrimeBuffer,
@@ -33,14 +26,6 @@ impl <'a> Iterator for ConcurrentPrimeBufferIter<'a> {
     }
 }
 
-impl Index<usize> for ConcurrentPrimeBuffer {
-    type Output = u64;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0.read()[index]
-    }
-}
-
 impl ConcurrentPrimeBuffer {
     pub fn new() -> Self {
         ConcurrentPrimeBuffer(RwLock::new(Vec::from(SMALL_PRIMES.map(u64::from))))
@@ -51,6 +36,14 @@ impl ConcurrentPrimeBuffer {
             buffer: self,
             index: 0,
         }
+    }
+
+    pub fn get_nth(&self, n: u64) -> u64 {
+        let list = self.0.read();
+        while list.len() < n as usize {
+            self.reserve_concurrent(self.bound() * 2);
+        }
+        list[n as usize]
     }
 
     pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
