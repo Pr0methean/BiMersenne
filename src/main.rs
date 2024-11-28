@@ -7,7 +7,7 @@ use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::{Shl, Sub};
-use std::sync::{OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time;
 use tokio::task::JoinHandle;
@@ -29,7 +29,7 @@ pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
-fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
+async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
     let num_bits = num.bits();
     let num_trial_divisions = (MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT).min(MAX_TRIAL_DIVISIONS);
     let config = CONFIG.get_or_init(|| {
@@ -40,7 +40,6 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         config.eslprp_test = true;
         Some(config)
     });
-    let start_trials = time::Instant::now();
     let buffer = BUFFER.get_or_init(|| {
         let buffer = ConcurrentPrimeBuffer::new();
         buffer.get_nth(MAX_TRIAL_DIVISIONS);
@@ -49,18 +48,22 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     let num_tasks = (num_trial_divisions + TRIAL_DIVISIONS_PER_TASK - 1)
         / TRIAL_DIVISIONS_PER_TASK;
     let mut tasks = Vec::with_capacity(num_tasks as usize);
-    let factor_found = AtomicBool::new(false);
+    let factor_found = Arc::new(AtomicBool::new(false));
     for task_index in 0..num_tasks {
         let start = task_index * TRIAL_DIVISIONS_PER_TASK;
         let end = ((task_index + 1) * TRIAL_DIVISIONS_PER_TASK).min(num_trial_divisions);
+        let factor_found = factor_found.clone();
+        let known_non_factors = known_non_factors.to_vec();
+        let num = num.clone();
         let task = tokio::spawn(async move {
+            let start_trials = time::Instant::now();
             for prime_index in start..end {
-                if factor_found.load(Ordering::AcqRel) {
+                if factor_found.load(Ordering::Acquire) {
                     return None;
                 }
                 let prime = buffer.get_nth(prime_index);
                 if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
-                    factor_found.store(true, Ordering::AcqRel);
+                    factor_found.store(true, Ordering::Release);
                     eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
                               prime, num_bits, start_trials.elapsed().as_nanos());
                     return Some(PrimalityResult {
@@ -75,15 +78,18 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         });
         tasks.push(task);
     }
-    let results: Vec<_> = tasks.into_iter()
-        .map(|task| tokio::join!(task))
-        .map(Result::unwrap)
-        .filter(Option::is_some)
-        .collect();
+    let mut results = Vec::new();
+    for task in tasks.into_iter() {
+        let result = task.await.unwrap();
+        if let Some(result) = result {
+            results.push(result);
+        }
+    }
     if !results.is_empty() {
         return PrimalityResult {
             result: No,
-            source: results.map(|result| result.source).collect::<Vec<String>>().join("; "),
+            source: Cow::from(results.into_iter().map(|result| result.source)
+                .collect::<Vec<_>>().join("; ")),
         };
     }
     let min_root_bits = (buffer.get_nth(num_trial_divisions) + 2).bits() as u64;
@@ -101,7 +107,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         }
         if num.is_nth_power(prime as u32) {
             eprintln!("Trial root found {} root of a {}-bit number in {}ns",
-                      prime, num_bits, start_trials.elapsed().as_nanos());
+                      prime, num_bits, start_roots.elapsed().as_nanos());
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}", prime).into(),
@@ -213,9 +219,8 @@ async fn main() {
                             product_m2.set_bit(q as u64, false);
                         }
                         debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
-                        is_prime_with_trials(product_m2, &known_non_factors)
+                        is_prime_with_trials(product_m2, &known_non_factors).await
                     })
-                    .into(),
                 });
             }
         }
