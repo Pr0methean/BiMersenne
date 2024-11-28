@@ -35,6 +35,10 @@ pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
+fn get_buffer() -> &'static ConcurrentPrimeBuffer {
+    BUFFER.get_or_init(ConcurrentPrimeBuffer::new)
+}
+
 async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
     let num_bits = num.bits();
     let num_trial_divisions = (MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT).min(MAX_TRIAL_DIVISIONS);
@@ -45,11 +49,6 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
         config.slprp_test = true;
         config.eslprp_test = true;
         Some(config)
-    });
-    let buffer = BUFFER.get_or_init(|| {
-        let buffer = ConcurrentPrimeBuffer::new();
-        buffer.get_nth(MAX_TRIAL_DIVISIONS);
-        buffer
     });
     let num_tasks = (num_trial_divisions + TRIAL_DIVISIONS_PER_TASK - 1)
         / TRIAL_DIVISIONS_PER_TASK;
@@ -68,7 +67,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
             }
             let start_trials = time::Instant::now();
             for prime_index in start..end {
-                let prime = BUFFER.get().unwrap().get_nth(prime_index);
+                let prime = get_buffer().get_nth(prime_index);
                 if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                     factor_found.store(true, Ordering::Release);
                     eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
@@ -85,7 +84,37 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
         });
         tasks.push(task);
     }
-    drop(factor_found);
+    let num = num_arc.clone();
+    let roots_task = tokio::spawn(async move {
+        let start_roots = time::Instant::now();
+        let min_root_bits = (get_buffer().get_nth(num_trial_divisions) + 2).bits() as u64;
+        for prime in get_buffer().primes(get_buffer().get_nth(NUM_TRIAL_ROOTS)) {
+            if prime == 2 && num_bits < 100_000_000 {
+                // Previous runs have ruled out numbers in this range being perfect squares
+                continue;
+            }
+            if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
+                // Higher roots would've been found by trial divisions already
+                eprintln!("Ruling out {} and higher roots for a {}-bit number",
+                          prime, num_bits);
+                break;
+            }
+            if num.is_nth_power(prime as u32) {
+                eprintln!("Trial root found {} root of a {}-bit number in {}ns",
+                          prime, num_bits, start_roots.elapsed().as_nanos());
+                factor_found.store(true, Ordering::Release);
+                return Some(PrimalityResult {
+                    result: No,
+                    source: format!("Trial nth root: {}", prime).into(),
+                });
+            } else {
+                eprintln!("{}-bit number has no {} root (trying roots for {}ns)",
+                          num_bits, prime, start_roots.elapsed().as_nanos());
+            }
+        }
+        return None;
+    });
+    tasks.push(roots_task);
     let mut results = Vec::new();
     for task in tasks.into_iter() {
         let result = task.await.unwrap();
@@ -100,36 +129,11 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
                 .collect::<Vec<_>>().join("; ")),
         };
     }
-    let num = Arc::try_unwrap(num_arc).unwrap();
-    let min_root_bits = (buffer.get_nth(num_trial_divisions) + 2).bits() as u64;
     let start_roots = time::Instant::now();
-    for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
-        if prime == 2 && num_bits < 100_000_000 {
-            // Previous runs have ruled out numbers in this range being perfect squares
-            continue;
-        }
-        if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
-            // Higher roots would've been found by trial divisions already
-            eprintln!("Ruling out {} and higher roots for a {}-bit number",
-                      prime, num_bits);
-            break;
-        }
-        if num.is_nth_power(prime as u32) {
-            eprintln!("Trial root found {} root of a {}-bit number in {}ns",
-                      prime, num_bits, start_roots.elapsed().as_nanos());
-            return PrimalityResult {
-                result: No,
-                source: format!("Trial nth root: {}", prime).into(),
-            };
-        } else {
-            eprintln!("{}-bit number has no {} root (trying roots for {}ns)",
-                      num_bits, prime, start_roots.elapsed().as_nanos());
-        }
-    }
     eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
               num_bits, start_roots.elapsed().as_nanos());
     let start_is_prime = time::Instant::now();
-    let result = buffer.is_prime(&num, *config);
+    let result = get_buffer().is_prime(&Arc::try_unwrap(num_arc).unwrap(), *config);
     let elapsed = start_is_prime.elapsed();
     eprintln!(
         "is_prime for a {}-bit number took {}ns and returned {:?}",
