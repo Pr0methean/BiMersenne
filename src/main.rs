@@ -56,11 +56,11 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
         let known_non_factors = known_non_factors.to_vec();
         let num = num.clone();
         let task = tokio::spawn(async move {
+            if factor_found.load(Ordering::Acquire) {
+                return None;
+            }
             let start_trials = time::Instant::now();
             for prime_index in start..end {
-                if factor_found.load(Ordering::Acquire) {
-                    return None;
-                }
                 let prime = buffer.get_nth(prime_index);
                 if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                     factor_found.store(true, Ordering::Release);
