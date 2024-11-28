@@ -66,6 +66,9 @@ impl ConcurrentPrimeBuffer {
         }
         let mut list = self.0.write();
         let current = list.last().copied().unwrap();
+        if sieve_limit < current {
+            return;
+        }
         eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
         let sieve_start = Instant::now();
         // create sieve and filter with existing primes
