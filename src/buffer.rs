@@ -1,3 +1,4 @@
+use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
 use num_bigint::BigUint;
@@ -56,6 +57,8 @@ impl ConcurrentPrimeBuffer {
         if sieve_limit < current {
             return;
         }
+        eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
+        let sieve_start = Instant::now();
         let mut list = self.0.write();
         let current = self.bound();
         // create sieve and filter with existing primes
@@ -85,6 +88,7 @@ impl ConcurrentPrimeBuffer {
 
         // collect the sieve
         list.extend(sieve.iter_zeros().map(|x| (x as u64) * 2 + current));
+        eprintln!("Expanding prime limit from {} to {} took {}ns", current, sieve_limit, sieve_start.elapsed().as_nanos());
     }
 
     pub fn is_prime(
