@@ -66,12 +66,12 @@ impl ConcurrentPrimeBuffer {
             return;
         }
         let mut list = self.0.write();
-        let current = self.bound();
+        let current = list.last().copied().unwrap();
         eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
         let sieve_start = Instant::now();
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
-        for p in self.copying_iter().skip(1) {
+        for p in list.iter().skip(1).copied() {
             // skip pre-filtered 2
             let start = if p * p < current {
                 p * ((current / p) | 1) // start from an odd factor
