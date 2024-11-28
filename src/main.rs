@@ -21,6 +21,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 ];
 pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
 pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
+pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 40;
 pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
@@ -29,7 +30,7 @@ static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
     let num_bits = num.bits();
-    let num_trial_divisions = MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT;
+    let num_trial_divisions = (MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT).min(MAX_TRIAL_DIVISIONS);
     let config = CONFIG.get_or_init(|| {
         let mut config = PrimalityTestConfig::default();
         config.sprp_trials = 8;
