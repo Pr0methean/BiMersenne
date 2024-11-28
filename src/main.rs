@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time;
 use tokio::task::JoinHandle;
 use Primality::{No, Yes};
@@ -22,7 +23,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
 pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
-pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
+pub const TRIAL_DIVISIONS_PER_TASK: u64 = 1 << 20;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
@@ -39,31 +40,53 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         config.eslprp_test = true;
         Some(config)
     });
-    let mut last_prime = 0;
     let start_trials = time::Instant::now();
-    let mut divisions_done = 0;
     let buffer = BUFFER.get_or_init(|| {
         let buffer = ConcurrentPrimeBuffer::new();
         buffer.get_nth(MAX_TRIAL_DIVISIONS);
         buffer
     });
-    for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
-        if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
-            eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
-                      prime, num_bits, start_trials.elapsed().as_nanos());
-            return PrimalityResult {
-                result: No,
-                source: format!("Trial division by {}", prime).into(),
-            };
-        }
-        last_prime = prime;
-        divisions_done += 1;
-        if divisions_done % REPORT_TRIAL_DIVISIONS_EVERY == 0 {
-            eprintln!("{} trial divisions done for a {}-bit number in {}ns",
-                      divisions_done, num_bits, start_trials.elapsed().as_nanos());
-        }
+    let num_tasks = (num_trial_divisions + TRIAL_DIVISIONS_PER_TASK - 1)
+        / TRIAL_DIVISIONS_PER_TASK;
+    let mut tasks = Vec::with_capacity(num_tasks as usize);
+    let factor_found = AtomicBool::new(false);
+    for task_index in 0..num_tasks {
+        let start = task_index * TRIAL_DIVISIONS_PER_TASK;
+        let end = ((task_index + 1) * TRIAL_DIVISIONS_PER_TASK).min(num_trial_divisions);
+        let task = tokio::spawn(async move {
+            for prime_index in start..end {
+                if factor_found.load(Ordering::AcqRel) {
+                    return None;
+                }
+                let prime = buffer.get_nth(prime_index);
+                if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
+                    factor_found.store(true, Ordering::AcqRel);
+                    eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
+                              prime, num_bits, start_trials.elapsed().as_nanos());
+                    return Some(PrimalityResult {
+                        result: No,
+                        source: format!("Trial division by {}", prime).into(),
+                    });
+                }
+            }
+            eprintln!("Trial divisions from {} to {} done for a {}-bit number in {}ns",
+                              start, end, num_bits, start_trials.elapsed().as_nanos());
+            return None;
+        });
+        tasks.push(task);
     }
-    let min_root_bits = (last_prime + 2).bits() as u64;
+    let results: Vec<_> = tasks.into_iter()
+        .map(|task| tokio::join!(task))
+        .map(Result::unwrap)
+        .filter(Option::is_some)
+        .collect();
+    if !results.is_empty() {
+        return PrimalityResult {
+            result: No,
+            source: results.map(|result| result.source).collect::<Vec<String>>().join("; "),
+        };
+    }
+    let min_root_bits = (buffer.get_nth(num_trial_divisions) + 2).bits() as u64;
     let start_roots = time::Instant::now();
     for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
         if prime == 2 && num_bits < 100_000_000 {
