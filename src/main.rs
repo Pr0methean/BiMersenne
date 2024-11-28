@@ -86,6 +86,9 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
     }
     let num = num_arc.clone();
     let roots_task = tokio::spawn(async move {
+        if factor_found.load(Ordering::Acquire) {
+            return None;
+        }
         let start_roots = time::Instant::now();
         let min_root_bits = (get_buffer().get_nth(num_trial_divisions) + 2).bits() as u64;
         for prime in get_buffer().primes(get_buffer().get_nth(NUM_TRIAL_ROOTS)) {
