@@ -93,7 +93,6 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
                 source: format!("Trial nth root: {}", prime).into(),
             };
         } else {
-            num_trial_roots += 1;
             eprintln!("{}-bit number has no {} root (trying roots for {}ns)",
                       num_bits, prime, start_roots.elapsed().as_nanos());
         }
