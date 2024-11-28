@@ -76,6 +76,10 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
     let mut num_trial_roots: usize = 0;
     let start_roots = time::Instant::now();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
+        if prime == 2 && num_bits < 100_000_000 {
+            // Previous runs have ruled out numbers in this range being perfect squares
+            continue;
+        }
         if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
             // Higher roots would've been found by trial divisions already
             eprintln!("Ruling out {} and higher roots for a {}-bit number",
