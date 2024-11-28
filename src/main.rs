@@ -2,9 +2,8 @@ mod buffer;
 
 use num_bigint::BigUint;
 use num_integer::Integer;
-use num_prime::buffer::PrimeBufferExt;
 use num_prime::nt_funcs::{factorize128, is_prime64};
-use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig, PrimeBuffer};
+use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::{Shl, Sub};
@@ -26,9 +25,7 @@ pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
-static BUFFER: ConcurrentPrimeBuffer = ConcurrentPrimeBuffer::new();
-static PRIMES_AS_BIGUINT: OnceLock<Box<[BigUint]>> = OnceLock::new();
-static MIN_ROOT_BITS: OnceLock<u64> = OnceLock::new();
+static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
     let num_bits = num.bits();
@@ -44,8 +41,9 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     let mut last_prime = 0;
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
-    for prime in BUFFER.primes(num_trial_divisions).copied() {
-        if !known_non_factors.contains(&prime) && num.is_multiple_of(prime.into()) {
+    let buffer = BUFFER.get_or_init(ConcurrentPrimeBuffer::new);
+    for prime in buffer.primes(num_trial_divisions) {
+        if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
             eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
                       prime, num_bits, start_trials.elapsed().as_nanos());
             return PrimalityResult {
@@ -62,7 +60,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     }
     let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = time::Instant::now();
-    for prime in BUFFER.primes(NUM_TRIAL_ROOTS).copied() {
+    for prime in buffer.primes(NUM_TRIAL_ROOTS) {
         if prime == 2 && num_bits < 100_000_000 {
             // Previous runs have ruled out numbers in this range being perfect squares
             continue;
@@ -88,7 +86,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
               num_bits, start_roots.elapsed().as_nanos());
     let start_is_prime = time::Instant::now();
-    let result = BUFFER.is_prime(&num, *config);
+    let result = buffer.is_prime(&num, *config);
     let elapsed = start_is_prime.elapsed();
     drop(num);
     eprintln!(
