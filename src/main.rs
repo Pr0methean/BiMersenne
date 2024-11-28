@@ -6,7 +6,7 @@ use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig, PrimeBuffer
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::{Shl, Sub};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use std::time;
 use tokio::task::JoinHandle;
 use Primality::{No, Yes};
@@ -17,25 +17,22 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const NUM_TRIAL_DIVISIONS: usize = 1 << 24;
+pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
+pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
 pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
-pub const NUM_TRIAL_ROOTS: usize = 1 << 8;
+pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
-static BUFFER: OnceLock<NaiveBuffer> = OnceLock::new();
+static BUFFER: RwLock<NaiveBuffer> = RwLock::new(NaiveBuffer::new());
 static PRIMES_AS_BIGUINT: OnceLock<Box<[BigUint]>> = OnceLock::new();
 static MIN_ROOT_BITS: OnceLock<u64> = OnceLock::new();
 
-fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> PrimalityResult {
-    let buffer = BUFFER.get_or_init(|| {
-        let mut buffer = NaiveBuffer::new();
-        let desired_len = NUM_TRIAL_DIVISIONS.max(NUM_TRIAL_ROOTS) as u64;
-        buffer.reserve(desired_len);
-        while buffer.iter().len() < desired_len as usize {
-            buffer.reserve(buffer.iter().last().unwrap() * 2);
-        }
-        buffer
-    });
+fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityResult {
+    let num_bits = num.bits();
+    let num_trial_divisions = MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT;
+    while BUFFER.read().unwrap().iter().len() < num_trial_divisions as usize {
+        BUFFER.write().unwrap().reserve(num_trial_divisions);
+    }
     let config = CONFIG.get_or_init(|| {
         let mut config = PrimalityTestConfig::default();
         config.sprp_trials = 8;
@@ -44,37 +41,28 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
         config.eslprp_test = true;
         Some(config)
     });
-    let primes_as_biguint = PRIMES_AS_BIGUINT.get_or_init(|| {
-        // Skip 2: definition as (2^p - 1)(2^q - 1) +/- 2 ensures product is odd
-        buffer
-            .iter()
-            .copied()
-            .skip(1)
-            .take(NUM_TRIAL_DIVISIONS)
-            .map(BigUint::from)
-            .collect()
-    });
-    let min_root_bits = MIN_ROOT_BITS.get_or_init(|| primes_as_biguint.last().unwrap().bits());
-    let num_bits = num.bits();
+    let mut last_prime = 0;
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
-    for chunk in primes_as_biguint.chunks(REPORT_TRIAL_DIVISIONS_EVERY) {
-        for prime in chunk {
-            if !known_non_factors.contains(prime) && num.is_multiple_of(prime) {
-                eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
-                          prime, num_bits, start_trials.elapsed().as_nanos());
-                return PrimalityResult {
-                    result: No,
-                    source: format!("Trial division by {}", prime).into(),
-                };
-            }
+    for prime in BUFFER.read().unwrap().primes(num_trial_divisions).copied() {
+        if !known_non_factors.contains(&prime) && num.is_multiple_of(prime.into()) {
+            eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
+                      prime, num_bits, start_trials.elapsed().as_nanos());
+            return PrimalityResult {
+                result: No,
+                source: format!("Trial division by {}", prime).into(),
+            };
         }
-        divisions_done += chunk.len();
-        eprintln!("{} trial divisions failed for a {}-bit number in {}ns",
-                  divisions_done, num_bits, start_trials.elapsed().as_nanos());
+        last_prime = prime;
+        divisions_done += 1;
+        if divisions_done % REPORT_TRIAL_DIVISIONS_EVERY == 0 {
+            eprintln!("{} trial divisions done for a {}-bit number in {}ns",
+                      divisions_done, num_bits, start_trials.elapsed().as_nanos());
+        }
     }
+    let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = time::Instant::now();
-    for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
+    for prime in BUFFER.read().unwrap().primes(NUM_TRIAL_ROOTS).copied() {
         if prime == 2 && num_bits < 100_000_000 {
             // Previous runs have ruled out numbers in this range being perfect squares
             continue;
@@ -100,7 +88,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
     eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
               num_bits, start_roots.elapsed().as_nanos());
     let start_is_prime = time::Instant::now();
-    let result = buffer.is_prime(&num, *config);
+    let result = BUFFER.read().unwrap().is_prime(&num, *config);
     let elapsed = start_is_prime.elapsed();
     drop(num);
     eprintln!(
@@ -177,10 +165,10 @@ async fn main() {
                 is_prime_calls += 1;
                 let mut known_non_factors = Vec::with_capacity(2);
                 if p <= 63 {
-                    known_non_factors.push(BigUint::from(1u64 << p - 1));
+                    known_non_factors.push(1u64 << p - 1);
                 }
                 if q <= 63 {
-                    known_non_factors.push(BigUint::from(1u64 << q - 1));
+                    known_non_factors.push(1u64 << q - 1);
                 }
                 output_lines.push(OutputLine {
                     p,
