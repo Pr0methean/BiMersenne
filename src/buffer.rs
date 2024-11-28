@@ -65,10 +65,10 @@ impl ConcurrentPrimeBuffer {
         if sieve_limit < current {
             return;
         }
-        eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
-        let sieve_start = Instant::now();
         let mut list = self.0.write();
         let current = self.bound();
+        eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
+        let sieve_start = Instant::now();
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
         for p in self.copying_iter().skip(1) {
