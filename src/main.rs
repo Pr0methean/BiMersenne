@@ -18,7 +18,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
 pub const NUM_TRIAL_DIVISIONS: usize = 1 << 24;
-pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 10;
+pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
 pub const NUM_TRIAL_ROOTS: usize = 1 << 6;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
