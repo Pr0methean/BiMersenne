@@ -73,10 +73,13 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
         eprintln!("{} trial divisions failed for a {}-bit number in {}ns",
                   divisions_done, num_bits, start_trials.elapsed().as_nanos());
     }
+    let mut num_trial_roots: usize = 0;
     let start_roots = time::Instant::now();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
         if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
             // Higher roots would've been found by trial divisions already
+            eprintln!("Ruling out {} and higher roots for a {}-bit number",
+                      prime, num_bits);
             break;
         }
         if num.is_nth_power(prime as u32) {
@@ -87,6 +90,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
                 source: format!("Trial nth root: {}", prime).into(),
             };
         } else {
+            num_trial_roots += 1;
             eprintln!("{}-bit number has no {} root (trying roots for {}ns)",
                       num_bits, prime, start_roots.elapsed().as_nanos());
         }
