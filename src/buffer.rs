@@ -43,9 +43,9 @@ impl ConcurrentPrimeBuffer {
         while out.is_none() {
             let list = self.0.read();
             let len = list.len() as u64;
-            let bound = list.last().unwrap();
+            let bound = *list.last().unwrap();
             drop(list);
-            if (len < n / 2) {
+            if len * 2 < n {
                 self.reserve_concurrent(bound * 2);
             } else {
                 self.reserve_concurrent(bound + n);
