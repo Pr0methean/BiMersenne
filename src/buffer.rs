@@ -46,7 +46,7 @@ impl ConcurrentPrimeBuffer {
     }
 
     pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
-        self.reserve_concurrent(limit);
+        self.reserve_concurrent(limit + 65536);
         let position = match self.0.read().binary_search(&limit) {
             Ok(p) => p + 1,
             Err(p) => p,
