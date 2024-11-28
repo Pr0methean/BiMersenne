@@ -21,7 +21,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 ];
 pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
 pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
-pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 40;
+pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
 pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
@@ -42,7 +42,11 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     let mut last_prime = 0;
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
-    let buffer = BUFFER.get_or_init(ConcurrentPrimeBuffer::new);
+    let buffer = BUFFER.get_or_init(|| {
+        let buffer = ConcurrentPrimeBuffer::new();
+        buffer.get_nth(MAX_TRIAL_DIVISIONS);
+        buffer
+    });
     for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
         if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
             eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
