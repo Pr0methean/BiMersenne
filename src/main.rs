@@ -73,7 +73,6 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
         eprintln!("{} trial divisions failed for a {}-bit number in {}ns",
                   divisions_done, num_bits, start_trials.elapsed().as_nanos());
     }
-    let mut num_trial_roots: usize = 0;
     let start_roots = time::Instant::now();
     for prime in buffer.iter().copied().take(NUM_TRIAL_ROOTS) {
         if prime == 2 && num_bits < 100_000_000 {
