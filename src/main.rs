@@ -38,7 +38,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[BigUint]) -> Primalit
     });
     let config = CONFIG.get_or_init(|| {
         let mut config = PrimalityTestConfig::default();
-        config.sprp_trials = 16;
+        config.sprp_trials = 8;
         config.sprp_random_trials = 4;
         config.slprp_test = true;
         config.eslprp_test = true;
