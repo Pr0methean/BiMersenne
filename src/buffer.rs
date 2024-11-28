@@ -39,13 +39,20 @@ impl ConcurrentPrimeBuffer {
     }
 
     pub fn get_nth(&self, n: u64) -> u64 {
-        while self.0.read().len() * 2 < n as usize {
-            self.reserve_concurrent(self.bound() * 2);
+        let mut out = self.0.read().get(n as usize).copied();
+        while out.is_none() {
+            let list = self.0.read();
+            let len = list.len() as u64;
+            let bound = list.last().unwrap();
+            drop(list);
+            if (len < n / 2) {
+                self.reserve_concurrent(bound * 2);
+            } else {
+                self.reserve_concurrent(bound + n);
+            }
+            out = self.0.read().get(n as usize).copied();
         }
-        while self.0.read().len() < n as usize {
-            self.reserve_concurrent(self.bound() + n);
-        }
-        self.0.read()[n as usize]
+        out.unwrap()
     }
 
     pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
