@@ -20,10 +20,16 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
-pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
-pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
-pub const TRIAL_DIVISIONS_PER_TASK: u64 = 1 << 20;
+#[cfg(debug_assertions)] pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 8;
+#[cfg(debug_assertions)] pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 8;
+#[cfg(debug_assertions)] pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 16;
+
+#[cfg(debug_assertions)] pub const TRIAL_DIVISIONS_PER_TASK: u64 = 1 << 8;
+
+#[cfg(not(debug_assertions))] pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
+#[cfg(not(debug_assertions))] pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
+#[cfg(not(debug_assertions))] pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
+#[cfg(not(debug_assertions))] pub const TRIAL_DIVISIONS_PER_TASK: u64 = 1 << 20;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
@@ -47,6 +53,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
     });
     let num_tasks = (num_trial_divisions + TRIAL_DIVISIONS_PER_TASK - 1)
         / TRIAL_DIVISIONS_PER_TASK;
+    let num_arc = Arc::new(num);
     let mut tasks = Vec::with_capacity(num_tasks as usize);
     let factor_found = Arc::new(AtomicBool::new(false));
     for task_index in 0..num_tasks {
@@ -54,14 +61,14 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
         let end = ((task_index + 1) * TRIAL_DIVISIONS_PER_TASK).min(num_trial_divisions);
         let factor_found = factor_found.clone();
         let known_non_factors = known_non_factors.to_vec();
-        let num = num.clone();
+        let num = num_arc.clone();
         let task = tokio::spawn(async move {
             if factor_found.load(Ordering::Acquire) {
                 return None;
             }
             let start_trials = time::Instant::now();
             for prime_index in start..end {
-                let prime = buffer.get_nth(prime_index);
+                let prime = BUFFER.get().unwrap().get_nth(prime_index);
                 if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                     factor_found.store(true, Ordering::Release);
                     eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
@@ -73,11 +80,12 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
                 }
             }
             eprintln!("Trial divisions from {} to {} done for a {}-bit number in {}ns",
-                              start, end, num_bits, start_trials.elapsed().as_nanos());
+                      start, end, num_bits, start_trials.elapsed().as_nanos());
             return None;
         });
         tasks.push(task);
     }
+    drop(factor_found);
     let mut results = Vec::new();
     for task in tasks.into_iter() {
         let result = task.await.unwrap();
@@ -92,6 +100,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
                 .collect::<Vec<_>>().join("; ")),
         };
     }
+    let num = Arc::try_unwrap(num_arc).unwrap();
     let min_root_bits = (buffer.get_nth(num_trial_divisions) + 2).bits() as u64;
     let start_roots = time::Instant::now();
     for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
@@ -122,7 +131,6 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> Primal
     let start_is_prime = time::Instant::now();
     let result = buffer.is_prime(&num, *config);
     let elapsed = start_is_prime.elapsed();
-    drop(num);
     eprintln!(
         "is_prime for a {}-bit number took {}ns and returned {:?}",
         num_bits,
