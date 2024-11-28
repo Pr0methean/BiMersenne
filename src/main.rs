@@ -19,7 +19,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 ];
 pub const NUM_TRIAL_DIVISIONS: usize = 1 << 24;
 pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 16;
-pub const NUM_TRIAL_ROOTS: usize = 1 << 6;
+pub const NUM_TRIAL_ROOTS: usize = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
 static BUFFER: OnceLock<NaiveBuffer> = OnceLock::new();
