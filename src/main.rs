@@ -22,7 +22,6 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
 pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
-pub const REPORT_TRIAL_DIVISIONS_EVERY: usize = 1 << 18;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
@@ -47,6 +46,14 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         buffer.get_nth(MAX_TRIAL_DIVISIONS);
         buffer
     });
+    let report_progress_every = match num_bits {
+        0..10_000 => u64::MAX,
+        10_000..100_000 => 1 << 20,
+        100_000..1_000_000 => 1 << 19,
+        1_000_000..50_000_000 => 1 << 18,
+        50_000_000..100_000_000 => 1 << 17,
+        _ => 1 << 16,
+    };
     for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
         if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
             eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
@@ -58,7 +65,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         }
         last_prime = prime;
         divisions_done += 1;
-        if divisions_done % REPORT_TRIAL_DIVISIONS_EVERY == 0 {
+        if divisions_done % report_progress_every == 0 {
             eprintln!("{} trial divisions done for a {}-bit number in {}ns",
                       divisions_done, num_bits, start_trials.elapsed().as_nanos());
         }
