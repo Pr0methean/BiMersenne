@@ -142,28 +142,27 @@ async fn main() {
                 let m_q = (1u64 << q) - 1;
                 let product = m_p * m_q;
                 output_tasks.push(tokio::spawn(async move {
-                    File::create(num_filename).unwrap().write_all(
-                        PrimalityResult {
-                            result: if is_prime64(product - 2) { Yes } else { No },
-                            source: "is_prime64".into(),
-                        }.to_string().as_bytes()
-                    ).unwrap()
+                    let result = PrimalityResult {
+                        result: if is_prime64(product - 2) { Yes } else { No },
+                        source: "is_prime64".into(),
+                    };
+                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
                 }));
             } else if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let product = m_p as u128 * m_q;
                 output_tasks.push(tokio::spawn(async move {
-                    File::create(num_filename).unwrap().write_all(
-                        PrimalityResult {
-                            result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
-                                Yes
-                            } else {
-                                No
-                            },
-                            source: "factorize128".into(),
-                        }.to_string().as_bytes()).unwrap()
-                    }));
+                    let result = PrimalityResult {
+                        result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
+                            Yes
+                        } else {
+                            No
+                        },
+                        source: "factorize128".into(),
+                    };
+                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
+                }));
             } else {
                 is_prime_calls += 1;
                 let mut known_non_factors = Vec::with_capacity(2);
@@ -187,8 +186,8 @@ async fn main() {
                         product_m2.set_bit(q as u64, false);
                     }
                     debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
-                    File::create(num_filename).unwrap().write(
-                        is_prime_with_trials(product_m2, &known_non_factors).to_string().as_bytes()).unwrap();
+                    let result = is_prime_with_trials(product_m2, &known_non_factors);
+                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
                 }));
             }
         }
