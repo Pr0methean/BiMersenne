@@ -50,8 +50,8 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         0..10_000 => u64::MAX,
         10_000..100_000 => 1 << 20,
         100_000..1_000_000 => 1 << 19,
-        1_000_000..50_000_000 => 1 << 18,
-        50_000_000..100_000_000 => 1 << 17,
+        1_000_000..10_000_000 => 1 << 18,
+        10_000_000..100_000_000 => 1 << 17,
         _ => 1 << 16,
     };
     for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
