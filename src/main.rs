@@ -6,10 +6,11 @@ use num_prime::nt_funcs::{factorize128, is_prime64};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::Write;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time;
-use tokio::task::JoinHandle;
 use Primality::{No, Yes};
 use crate::buffer::ConcurrentPrimeBuffer;
 
@@ -124,43 +125,36 @@ impl Display for PrimalityResult {
     }
 }
 
-struct OutputLine {
-    p: u32,
-    q: u32,
-    result_product_minus_2: JoinHandle<PrimalityResult>,
-}
-
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    println!("p,q,prime(M(p)*M(q)-2),Source");
-    let mut output_lines = Vec::new();
+    let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
         for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
             let q = MERSENNE_EXPONENTS[q_i];
+            let num_filename = std::path::PathBuf::from(format!("result_{}_{}.txt", p, q));
+            if num_filename.exists() {
+                continue;
+            }
             if p + q <= 64 {
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u64 << q) - 1;
                 let product = m_p * m_q;
-                output_lines.push(OutputLine {
-                    p,
-                    q,
-                    result_product_minus_2: tokio::spawn(async move {
+                output_tasks.push(tokio::spawn(async move {
+                    File::create(num_filename).unwrap().write_all(
                         PrimalityResult {
                             result: if is_prime64(product - 2) { Yes } else { No },
                             source: "is_prime64".into(),
-                        }
-                    }),
-                });
+                        }.to_string().as_bytes()
+                    ).unwrap()
+                }));
             } else if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let product = m_p as u128 * m_q;
-                output_lines.push(OutputLine {
-                    p,
-                    q,
-                    result_product_minus_2: tokio::spawn(async move {
+                output_tasks.push(tokio::spawn(async move {
+                    File::create(num_filename).unwrap().write_all(
                         PrimalityResult {
                             result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
                                 Yes
@@ -168,9 +162,8 @@ async fn main() {
                                 No
                             },
                             source: "factorize128".into(),
-                        }
-                    }),
-                });
+                        }.to_string().as_bytes()).unwrap()
+                    }));
             } else {
                 is_prime_calls += 1;
                 let mut known_non_factors = Vec::with_capacity(2);
@@ -180,39 +173,29 @@ async fn main() {
                 if q <= 63 {
                     known_non_factors.push(1u64 << q - 1);
                 }
-                output_lines.push(OutputLine {
-                    p,
-                    q,
-                    result_product_minus_2: tokio::spawn(async move {
-                        let mut product_limbs = vec![u32::MAX; (p + q) as usize / 32];
-                        if (p + q) % 32 != 0 {
-                            product_limbs.push((1 << ((p + q) % 32)) - 1);
-                        }
-                        let mut product_m2: BigUint = BigUint::new(product_limbs);
-                        debug_assert!(product_m2 == one().shl(p + q).sub(one()));
-                        if p == q {
-                            product_m2.set_bit(p as u64 + 1, false);
-                        } else {
-                            product_m2.set_bit(p as u64, false);
-                            product_m2.set_bit(q as u64, false);
-                        }
-                        debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
-                        is_prime_with_trials(product_m2, &known_non_factors)
-                    })
-                    .into(),
-                });
+                output_tasks.push(tokio::spawn(async move {
+                    let mut product_limbs = vec![u32::MAX; (p + q) as usize / 32];
+                    if (p + q) % 32 != 0 {
+                        product_limbs.push((1 << ((p + q) % 32)) - 1);
+                    }
+                    let mut product_m2: BigUint = BigUint::new(product_limbs);
+                    debug_assert!(product_m2 == one().shl(p + q).sub(one()));
+                    if p == q {
+                        product_m2.set_bit(p as u64 + 1, false);
+                    } else {
+                        product_m2.set_bit(p as u64, false);
+                        product_m2.set_bit(q as u64, false);
+                    }
+                    debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
+                    File::create(num_filename).unwrap().write(
+                        is_prime_with_trials(product_m2, &known_non_factors).to_string().as_bytes()).unwrap();
+                }));
             }
         }
     }
     eprintln!("All computation tasks launched; {} will use is_prime or trial divisions", is_prime_calls);
-    for line in output_lines.into_iter() {
-        let p = line.p;
-        let q = line.q;
-        let result_product_plus_2 = line.result_product_minus_2.await.unwrap();
-        println!(
-            "{}, {}, {}",
-            p, q, result_product_plus_2
-        );
+    for task in output_tasks.into_iter() {
+        task.await.unwrap();
     }
 }
 
