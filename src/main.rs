@@ -51,8 +51,8 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         10_000..100_000 => 1 << 22,
         100_000..1_000_000 => 1 << 20,
         1_000_000..10_000_000 => 1 << 18,
-        10_000_000..100_000_000 => 1 << 17,
-        _ => 1 << 16,
+        10_000_000..100_000_000 => 1 << 16,
+        _ => 1 << 14,
     };
     for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
         if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
