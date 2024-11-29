@@ -48,7 +48,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     });
     let report_progress_every = match num_bits {
         0..10_000 => u64::MAX,
-        10_000..100_000 => 1 << 20,
+        10_000..100_000 => 1 << 21,
         100_000..1_000_000 => 1 << 19,
         1_000_000..10_000_000 => 1 << 18,
         10_000_000..100_000_000 => 1 << 17,
