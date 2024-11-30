@@ -1,7 +1,6 @@
 mod buffer;
 
 use num_bigint::BigUint;
-use num_integer::Integer;
 use num_prime::nt_funcs::{factorize128, is_prime64};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
@@ -13,7 +12,6 @@ use std::sync::{OnceLock};
 use std::time;
 use std::time::Duration;
 use mod_exp::mod_exp;
-use modular::modulo;
 use Primality::{No, Yes};
 use tokio::task::JoinSet;
 use crate::buffer::ConcurrentPrimeBuffer;
@@ -45,11 +43,11 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let start_trials = time::Instant::now();
         for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if prime != p && prime != q {
-                let pq_mod = modulo!(mod_exp(2, p + q, prime), prime)
-                    - modulo!(mod_exp(2, p, prime), prime)
-                    - modulo!(mod_exp(2, q, prime), prime)
-                    - modulo!(1, prime);
-                if pq_mod == 0 {
+                let pq_mod = mod_exp(2, p + q, prime)
+                    + (prime - mod_exp(2, p, prime))
+                    + (prime - mod_exp(2, q, prime))
+                    - 1;
+                if pq_mod % prime == 0 {
                     factors.push(prime);
                     eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
                               prime, p + q, ReadableDuration(start_trials.elapsed()));

@@ -11,7 +11,6 @@ codegen-units = 1
 num-bigint = "0.4.6"
 num-prime = "0.4.4"
 num-integer = "0.1.46"
-modular = "1.0.0"
 mod_exp = "1.0.1"
 rayon = "1.10.0"
 tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
