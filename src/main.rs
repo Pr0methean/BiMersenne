@@ -22,8 +22,6 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const MIN_TRIAL_DIVISIONS: u64 = 1 << 24;
-pub const TRIAL_DIVISIONS_PER_BIT: u64 = 1 << 12;
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
@@ -32,7 +30,6 @@ static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> PrimalityResult {
     let num_bits = num.bits();
-    let num_trial_divisions = (MIN_TRIAL_DIVISIONS + num_bits * TRIAL_DIVISIONS_PER_BIT).min(MAX_TRIAL_DIVISIONS);
     let config = CONFIG.get_or_init(|| {
         let mut config = PrimalityTestConfig::default();
         config.sprp_trials = 8;
@@ -45,10 +42,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
     let report_progress_every = match num_bits {
-        0..10_000 => u64::MAX,
-        10_000..100_000 => 1 << 22,
-        100_000..1_000_000 => 1 << 20,
-        1_000_000..10_000_000 => 1 << 18,
+        0..10_000_000 => 1 << 18,
         10_000_000..100_000_000 => 1 << 16,
         _ => 1 << 14,
     };
@@ -56,7 +50,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     let num_copy = num.clone();
     join_set.spawn(async move {
         let buffer = get_buffer();
-        for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
+        for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                 eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
                           prime, num_bits, ReadableDuration(start_trials.elapsed()));
