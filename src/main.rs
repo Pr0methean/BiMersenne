@@ -44,11 +44,6 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     let mut last_prime = 0;
     let start_trials = time::Instant::now();
     let mut divisions_done = 0;
-    let buffer = BUFFER.get_or_init(|| {
-        let buffer = ConcurrentPrimeBuffer::new();
-        buffer.get_nth(MAX_TRIAL_DIVISIONS);
-        buffer
-    });
     let report_progress_every = match num_bits {
         0..10_000 => u64::MAX,
         10_000..100_000 => 1 << 22,
@@ -60,6 +55,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     let mut join_set = JoinSet::new();
     let num_copy = num.clone();
     join_set.spawn(async move {
+        let buffer = get_buffer();
         for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
             if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                 eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
@@ -108,6 +104,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
         return None;
     });
     join_set.spawn(async move {
+        let buffer = get_buffer();
         let start_is_prime = time::Instant::now();
         let result = buffer.is_prime(&num_copy, *config);
         let elapsed = start_is_prime.elapsed();
@@ -131,6 +128,14 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     panic!("Both trial divisions and is_prime failed for a {}-bit number", num_bits);
 }
 
+fn get_buffer() -> &'static ConcurrentPrimeBuffer {
+    BUFFER.get_or_init(|| {
+        let buffer = ConcurrentPrimeBuffer::new();
+        buffer.get_nth(MAX_TRIAL_DIVISIONS);
+        buffer
+    })
+}
+
 struct PrimalityResult {
     result: Primality,
     source: Cow<'static, str>,
@@ -144,6 +149,7 @@ impl Display for PrimalityResult {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    tokio::spawn(async { get_buffer() }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
