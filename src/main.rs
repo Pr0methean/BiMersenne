@@ -39,7 +39,6 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
         Some(config)
     });
     let mut last_prime = 0;
-    let start_trials = time::Instant::now();
     let mut divisions_done = 0;
     let report_progress_every = match num_bits {
         0..10_000_000 => 1 << 18,
@@ -50,6 +49,7 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
     let num_copy = num.clone();
     join_set.spawn(async move {
         let buffer = get_buffer();
+        let start_trials = time::Instant::now();
         for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
                 eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
