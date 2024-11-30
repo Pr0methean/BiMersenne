@@ -74,16 +74,18 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     }
     let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = time::Instant::now();
+    let mut remaining_roots = NUM_TRIAL_ROOTS;
     for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
+        if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
+            // Higher roots would've been found by trial divisions already
+            eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
+                      prime, num_bits, remaining_roots);
+            break;
+        }
+        remaining_roots -= 1;
         if prime == 2 && num_bits < 100_000_000 {
             // Previous runs have ruled out numbers in this range being perfect squares
             continue;
-        }
-        if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
-            // Higher roots would've been found by trial divisions already
-            eprintln!("Ruling out {} and higher roots for a {}-bit number",
-                      prime, num_bits);
-            break;
         }
         if num.is_nth_power(prime as u32) {
             eprintln!("Trial root found {} root of a {}-bit number in {}",
