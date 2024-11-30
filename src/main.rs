@@ -1,7 +1,7 @@
 mod buffer;
 
 use num_bigint::BigUint;
-use num_prime::nt_funcs::{factorize128, is_prime64};
+use num_prime::nt_funcs::{factorize128};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
@@ -181,29 +181,19 @@ async fn main() {
             if num_filename.exists() {
                 continue;
             }
-            if p + q <= 64 {
-                let m_p = (1u64 << p) - 1;
-                let m_q = (1u64 << q) - 1;
-                let product = m_p * m_q;
-                output_tasks.push(tokio::spawn(async move {
-                    let result = PrimalityResult {
-                        result: if is_prime64(product - 2) { Yes } else { No },
-                        source: "is_prime64".into(),
-                    };
-                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
-                }));
-            } else if p + q <= 128 {
+            if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let product = m_p as u128 * m_q;
                 output_tasks.push(tokio::spawn(async move {
+                    let factors = factorize128(product - 2);
                     let result = PrimalityResult {
-                        result: if factorize128(product - 2).into_values().sum::<usize>() == 1 {
+                        result: if factors.values().sum::<usize>() == 1 {
                             Yes
                         } else {
                             No
                         },
-                        source: "factorize128".into(),
+                        source: format!("factorize128 gives factors: {:?}", factors).into(),
                     };
                     File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
                 }));
