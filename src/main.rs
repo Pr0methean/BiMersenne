@@ -12,6 +12,8 @@ use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time;
 use std::time::Duration;
+use mod_exp::mod_exp;
+use modular::modulo;
 use Primality::{No, Yes};
 use tokio::task::JoinSet;
 use crate::buffer::ConcurrentPrimeBuffer;
@@ -22,14 +24,82 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 32;
+pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
-async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> PrimalityResult {
-    let num_bits = num.bits();
+async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
+    let mut join_set = JoinSet::new();
+    join_set.spawn(async move {
+        let mut divisions_done = 0;
+        let report_progress_every = match p + q {
+            0..10_000_000 => 1 << 20,
+            10_000_000..100_000_000 => 1 << 18,
+            _ => 1 << 16,
+        };
+        let buffer = get_buffer();
+        let mut last_prime = 0;
+        let mut factors = vec![];
+        let start_trials = time::Instant::now();
+        for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
+            if prime != p && prime != q {
+                let pq_mod = modulo!(mod_exp(2, p + q, prime), prime)
+                    - modulo!(mod_exp(2, p, prime), prime)
+                    - modulo!(mod_exp(2, q, prime), prime)
+                    - modulo!(1, prime);
+                if pq_mod == 0 {
+                    factors.push(prime);
+                    eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
+                              prime, p + q, ReadableDuration(start_trials.elapsed()));
+                    if prime > 7 {
+                        return Some(PrimalityResult {
+                            result: No,
+                            source: format!("Trial divisions by {:?}", factors).into(),
+                        });
+                    }
+                }
+            }
+            last_prime = prime;
+            divisions_done += 1;
+            if divisions_done % report_progress_every == 0 {
+                eprintln!("{} trial divisions done for a {}-bit number in {}",
+                          divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
+            }
+        }
+        let min_root_bits = (last_prime + 2).bits() as u64;
+        let start_roots = time::Instant::now();
+        let num = product_m2_as_biguint(p, q);
+        let mut remaining_roots = NUM_TRIAL_ROOTS;
+        for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
+            if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
+                // Higher roots would've been found by trial divisions already
+                eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
+                          prime, p + q, remaining_roots);
+                break;
+            }
+            remaining_roots -= 1;
+            if prime == 2 && p + q < 100_000_000 {
+                // Previous runs have ruled out numbers in this range being perfect squares
+                continue;
+            }
+            if num.is_nth_power(prime as u32) {
+                eprintln!("Trial root found {} root of a {}-bit number in {}",
+                          prime, p + q, ReadableDuration(start_trials.elapsed()));
+                return Some(PrimalityResult {
+                    result: No,
+                    source: format!("Trial nth root: {}", prime).into(),
+                });
+            } else if p + q > 100_000 || remaining_roots == 0 {
+                eprintln!("{}-bit number has no {} root (trying roots for {})",
+                          p + q, prime, ReadableDuration(start_roots.elapsed()));
+            }
+        }
+        eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
+                  p + q, start_roots.elapsed().as_nanos());
+        return None;
+    });
     let config = CONFIG.get_or_init(|| {
         let mut config = PrimalityTestConfig::default();
         config.sprp_trials = 8;
@@ -38,74 +108,16 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
         config.eslprp_test = true;
         Some(config)
     });
-    let mut last_prime = 0;
-    let mut divisions_done = 0;
-    let report_progress_every = match num_bits {
-        0..10_000_000 => 1 << 18,
-        10_000_000..100_000_000 => 1 << 16,
-        _ => 1 << 14,
-    };
-    let mut join_set = JoinSet::new();
-    let num_copy = num.clone();
-    join_set.spawn(async move {
-        let buffer = get_buffer();
-        let start_trials = time::Instant::now();
-        for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
-            if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
-                eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
-                          prime, num_bits, ReadableDuration(start_trials.elapsed()));
-                return Some(PrimalityResult {
-                    result: No,
-                    source: format!("Trial division by {}", prime).into(),
-                });
-            }
-            last_prime = prime;
-            divisions_done += 1;
-            if divisions_done % report_progress_every == 0 {
-                eprintln!("{} trial divisions done for a {}-bit number in {}",
-                          divisions_done, num_bits, ReadableDuration(start_trials.elapsed()));
-            }
-        }
-        let min_root_bits = (last_prime + 2).bits() as u64;
-        let start_roots = time::Instant::now();
-        let mut remaining_roots = NUM_TRIAL_ROOTS;
-        for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
-            if (prime.bits() as u64 - 1) * (min_root_bits - 1) > num_bits {
-                // Higher roots would've been found by trial divisions already
-                eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
-                          prime, num_bits, remaining_roots);
-                break;
-            }
-            remaining_roots -= 1;
-            if prime == 2 && num_bits < 100_000_000 {
-                // Previous runs have ruled out numbers in this range being perfect squares
-                continue;
-            }
-            if num.is_nth_power(prime as u32) {
-                eprintln!("Trial root found {} root of a {}-bit number in {}",
-                          prime, num_bits, ReadableDuration(start_trials.elapsed()));
-                return Some(PrimalityResult {
-                    result: No,
-                    source: format!("Trial nth root: {}", prime).into(),
-                });
-            } else if num_bits > 100_000 || remaining_roots == 0 {
-                eprintln!("{}-bit number has no {} root (trying roots for {})",
-                          num_bits, prime, ReadableDuration(start_roots.elapsed()));
-            }
-        }
-        eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
-                  num_bits, start_roots.elapsed().as_nanos());
-        return None;
-    });
     join_set.spawn(async move {
         let buffer = get_buffer();
         let start_is_prime = time::Instant::now();
-        let result = buffer.is_prime(&num_copy, *config);
+        let product_m2 = product_m2_as_biguint(p, q);
+        let result = buffer.is_prime(&product_m2, *config);
         let elapsed = start_is_prime.elapsed();
-        drop(num_copy);
+        drop(product_m2);
         eprintln!(
             "is_prime for a {}-bit number took {} and returned {:?}",
-            num_bits,
+            p + q,
             ReadableDuration(elapsed),
             result
         );
@@ -119,7 +131,24 @@ async fn is_prime_with_trials(num: BigUint, known_non_factors: Box<[u64]>) -> Pr
             return result;
         }
     }
-    panic!("Both trial divisions and is_prime failed for a {}-bit number", num_bits);
+    panic!("Both trial divisions and is_prime failed for a {}-bit number", p + q);
+}
+
+fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
+    let mut product_limbs = vec![u32::MAX; (p + q) as usize / 32];
+    if (p + q) % 32 != 0 {
+        product_limbs.push((1 << ((p + q) % 32)) - 1);
+    }
+    let mut product_m2: BigUint = BigUint::new(product_limbs);
+    debug_assert!(product_m2 == one().shl(p + q).sub(one()));
+    if p == q {
+        product_m2.set_bit(p + 1, false);
+    } else {
+        product_m2.set_bit(p, false);
+        product_m2.set_bit(q, false);
+    }
+    debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
+    product_m2
 }
 
 fn get_buffer() -> &'static ConcurrentPrimeBuffer {
@@ -182,28 +211,8 @@ async fn main() {
                 }));
             } else {
                 is_prime_calls += 1;
-                let mut known_non_factors = Vec::with_capacity(2);
-                if p <= 63 {
-                    known_non_factors.push(1u64 << p - 1);
-                }
-                if q <= 63 {
-                    known_non_factors.push(1u64 << q - 1);
-                }
                 output_tasks.push(tokio::spawn(async move {
-                    let mut product_limbs = vec![u32::MAX; (p + q) as usize / 32];
-                    if (p + q) % 32 != 0 {
-                        product_limbs.push((1 << ((p + q) % 32)) - 1);
-                    }
-                    let mut product_m2: BigUint = BigUint::new(product_limbs);
-                    debug_assert!(product_m2 == one().shl(p + q).sub(one()));
-                    if p == q {
-                        product_m2.set_bit(p as u64 + 1, false);
-                    } else {
-                        product_m2.set_bit(p as u64, false);
-                        product_m2.set_bit(q as u64, false);
-                    }
-                    debug_assert!(product_m2 == one().shl(p + q).sub(one().shl(p)).sub(one().shl(q)).sub(one()));
-                    let result = is_prime_with_trials(product_m2, known_non_factors.into_boxed_slice()).await;
+                    let result = is_prime_with_trials(p as u64, q as u64).await;
                     File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
                 }));
             }
