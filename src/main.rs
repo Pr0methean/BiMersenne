@@ -245,10 +245,10 @@ impl Display for ReadableDuration {
                 if minutes == 0 {
                     return f.write_str(format!("{}.{:09}s", seconds, nanos).as_str());
                 }
-                return f.write_str(format!("{}m {}.{:09}s", minutes, seconds, nanos).as_str());
+                return f.write_str(format!("{}m{:02}.{:09}s", minutes, seconds, nanos).as_str());
             }
-            return f.write_str(format!("{}h {}m {}.{:09}s", hours, minutes, seconds, nanos).as_str());
+            return f.write_str(format!("{}h{:02}m{:02}.{:09}s", hours, minutes, seconds, nanos).as_str());
         }
-        f.write_str(format!("{}d {}h {}m {}.{:09}s", days, hours, minutes, seconds, nanos).as_str())
+        f.write_str(format!("{}d{:02}h{:02}m{:02}.{:09}s", days, hours, minutes, seconds, nanos).as_str())
     }
 }
