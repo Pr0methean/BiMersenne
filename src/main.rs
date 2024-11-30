@@ -5,12 +5,13 @@ use num_integer::Integer;
 use num_prime::nt_funcs::{factorize128, is_prime64};
 use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
 use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::Write;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time;
+use std::time::Duration;
 use Primality::{No, Yes};
 use crate::buffer::ConcurrentPrimeBuffer;
 
@@ -57,8 +58,8 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     };
     for prime in buffer.primes(buffer.get_nth(num_trial_divisions)) {
         if !known_non_factors.contains(&prime) && num.is_multiple_of(&BigUint::from(prime)) {
-            eprintln!("Trial division found {} as a factor of a {}-bit number in {}ns",
-                      prime, num_bits, start_trials.elapsed().as_nanos());
+            eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
+                      prime, num_bits, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
                 result: No,
                 source: format!("Trial division by {}", prime).into(),
@@ -67,8 +68,8 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
         last_prime = prime;
         divisions_done += 1;
         if divisions_done % report_progress_every == 0 {
-            eprintln!("{} trial divisions done for a {}-bit number in {}ns",
-                      divisions_done, num_bits, start_trials.elapsed().as_nanos());
+            eprintln!("{} trial divisions done for a {}-bit number in {}",
+                      divisions_done, num_bits, ReadableDuration(start_trials.elapsed()));
         }
     }
     let min_root_bits = (last_prime + 2).bits() as u64;
@@ -85,15 +86,15 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
             break;
         }
         if num.is_nth_power(prime as u32) {
-            eprintln!("Trial root found {} root of a {}-bit number in {}ns",
-                      prime, num_bits, start_trials.elapsed().as_nanos());
+            eprintln!("Trial root found {} root of a {}-bit number in {}",
+                      prime, num_bits, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}", prime).into(),
             };
         } else if num_bits > 100_000 {
-            eprintln!("{}-bit number has no {} root (trying roots for {}ns)",
-                      num_bits, prime, start_roots.elapsed().as_nanos());
+            eprintln!("{}-bit number has no {} root (trying roots for {})",
+                      num_bits, prime, ReadableDuration(start_roots.elapsed()));
         }
     }
     eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
@@ -103,9 +104,9 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
     let elapsed = start_is_prime.elapsed();
     drop(num);
     eprintln!(
-        "is_prime for a {}-bit number took {}ns and returned {:?}",
+        "is_prime for a {}-bit number took {} and returned {:?}",
         num_bits,
-        elapsed.as_nanos(),
+        ReadableDuration(elapsed),
         result
     );
     PrimalityResult {
@@ -200,4 +201,32 @@ async fn main() {
 
 fn one() -> BigUint {
     BigUint::from(1u8)
+}
+
+struct ReadableDuration(Duration);
+
+impl Display for ReadableDuration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut seconds = self.0.as_secs();
+        if seconds == 0 {
+            return self.0.fmt(f);
+        }
+        let days = seconds / (60 * 60 * 24);
+        seconds %= 60 * 60 * 24;
+        let hours = seconds / (60 * 60);
+        seconds %= 60 * 60;
+        let minutes = seconds / 60;
+        seconds %= 60;
+        let nanos = self.0.as_nanos() % 1_000_000_000;
+        if days == 0 {
+            if hours == 0 {
+                if minutes == 0 {
+                    return f.write_str(format!("{}.{:09}s", seconds, nanos).as_str());
+                }
+                return f.write_str(format!("{}m {}.{:09}s", minutes, seconds, nanos).as_str());
+            }
+            return f.write_str(format!("{}h {}m {}.{:09}s", hours, minutes, seconds, nanos).as_str());
+        }
+        f.write_str(format!("{}d {}h {}m {}.{:09}s", days, hours, minutes, seconds, nanos).as_str())
+    }
 }

@@ -8,6 +8,7 @@ use num_prime::{Primality, PrimalityTestConfig, PrimalityUtils};
 use parking_lot::RwLock;
 use rand::rngs::ThreadRng;
 use rand::RngCore;
+use crate::ReadableDuration;
 
 pub struct ConcurrentPrimeBuffer(RwLock<Vec<u64>>);
 
@@ -108,7 +109,7 @@ impl ConcurrentPrimeBuffer {
 
         // collect the sieve
         list.extend(sieve.iter_zeros().map(|x| (x as u64) * 2 + current));
-        eprintln!("Expanding prime limit from {} to {} took {}ns", current, sieve_limit, sieve_start.elapsed().as_nanos());
+        eprintln!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
     }
 
     pub fn is_prime(
