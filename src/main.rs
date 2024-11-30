@@ -94,7 +94,7 @@ fn is_prime_with_trials(num: BigUint, known_non_factors: &[u64]) -> PrimalityRes
                 result: No,
                 source: format!("Trial nth root: {}", prime).into(),
             };
-        } else if num_bits > 100_000 {
+        } else if num_bits > 100_000 || remaining_roots == 0 {
             eprintln!("{}-bit number has no {} root (trying roots for {})",
                       num_bits, prime, ReadableDuration(start_roots.elapsed()));
         }
