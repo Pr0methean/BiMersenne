@@ -33,9 +33,9 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     join_set.spawn(async move {
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
-            0..10_000_000 => 1 << 20,
-            10_000_000..100_000_000 => 1 << 18,
-            _ => 1 << 16,
+            0..10_000_000 => 1 << 24,
+            10_000_000..100_000_000 => 1 << 22,
+            _ => 1 << 20,
         };
         let buffer = get_buffer();
         let mut last_prime = 0;
