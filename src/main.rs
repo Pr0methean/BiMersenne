@@ -2,7 +2,7 @@ mod buffer;
 
 use num_bigint::BigUint;
 use num_prime::nt_funcs::{factorize128};
-use num_prime::{BitTest, ExactRoots, Primality, PrimalityTestConfig};
+use num_prime::{BitTest, ExactRoots, Primality};
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
@@ -25,7 +25,6 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
-static CONFIG: OnceLock<Option<PrimalityTestConfig>> = OnceLock::new();
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
@@ -115,18 +114,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     });
     join_set.spawn(async move {
         let buffer = get_buffer();
-        let config = CONFIG.get_or_init(|| {
-            let mut config = PrimalityTestConfig::default();
-            config.sprp_trials = 8;
-            config.sprp_random_trials = 4;
-            config.slprp_test = true;
-            config.eslprp_test = true;
-            Some(config)
-        });
         tokio::task::yield_now().await;
         let start_is_prime = time::Instant::now();
         let product_m2 = product_m2_as_biguint(p, q);
-        let result = buffer.is_prime(&product_m2, *config);
+        let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
         drop(product_m2);
         eprintln!(

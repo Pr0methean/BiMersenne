@@ -4,11 +4,14 @@ use bitvec::order::Msb0;
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_prime::detail::SMALL_PRIMES;
-use num_prime::{Primality, PrimalityTestConfig, PrimalityUtils};
+use num_prime::{Primality, PrimalityUtils};
 use parking_lot::RwLock;
 use rand::rngs::ThreadRng;
 use rand::RngCore;
 use crate::ReadableDuration;
+
+const SPRP_TRIALS: u64 = 8;
+const RANDOM_SPRP_TRIALS: u64 = 4;
 
 pub struct ConcurrentPrimeBuffer(RwLock<Vec<u64>>);
 
@@ -115,30 +118,24 @@ impl ConcurrentPrimeBuffer {
     pub fn is_prime(
         &self,
         target: &BigUint,
-        config: Option<PrimalityTestConfig>,
     ) -> Primality
     {
-        let config = config.unwrap_or(PrimalityTestConfig::default());
         let mut probability = 1.;
 
         // miller-rabin test
         let mr_start = Instant::now();
-        let mut witness_list: Vec<u64> = Vec::new();
-        if config.sprp_trials > 0 {
-            witness_list.extend(self.primes(config.sprp_trials as u64));
-            probability *= 1. - 0.25f32.powi(config.sprp_trials as i32);
-        }
-        if config.sprp_random_trials > 0 {
-            for _ in 0..config.sprp_random_trials {
-                // we have ensured target is larger than 2^64
-                let mut w: u64 = ThreadRng::default().next_u64();
-                while witness_list.iter().find(|&x| x == &w).is_some() {
-                    w = ThreadRng::default().next_u64();
-                }
-                witness_list.push(w);
+        let mut witness_list: Vec<u64> = Vec::with_capacity((SPRP_TRIALS + RANDOM_SPRP_TRIALS) as usize);
+        witness_list.extend(self.primes(SPRP_TRIALS as u64));
+        probability *= 1. - 0.25f32.powi(SPRP_TRIALS as i32);
+        for _ in 0..RANDOM_SPRP_TRIALS {
+            // we have ensured target is larger than 2^64
+            let mut w: u64 = ThreadRng::default().next_u64();
+            while witness_list.iter().find(|&x| x == &w).is_some() {
+                w = ThreadRng::default().next_u64();
             }
-            probability *= 1. - 0.25f32.powi(config.sprp_random_trials as i32);
+            witness_list.push(w);
         }
+        probability *= 1. - 0.25f32.powi(RANDOM_SPRP_TRIALS as i32);
         if !witness_list
             .into_iter()
             .all(|x| {
@@ -156,29 +153,24 @@ impl ConcurrentPrimeBuffer {
         eprintln!("Miller-Rabin test failed to prove a {}-bit number composite after {}", target.bits(),
                   ReadableDuration(mr_start.elapsed()));
         // lucas probable prime test
-        if config.slprp_test {
-            probability *= 1. - 4f32 / 15f32;
-            let lucas_start = Instant::now();
-            if !target.is_slprp(None, None) {
-                eprintln!("Strong Lucas test found a {}-bit number composite after {}", target.bits(),
-                          ReadableDuration(lucas_start.elapsed()));
-                return Primality::No;
-            }
-            eprintln!("Strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+        probability *= 1. - 4f32 / 15f32;
+        let lucas_start = Instant::now();
+        if !target.is_slprp(None, None) {
+            eprintln!("Strong Lucas test found a {}-bit number composite after {}", target.bits(),
                       ReadableDuration(lucas_start.elapsed()));
+            return Primality::No;
         }
-        if config.eslprp_test {
-            probability *= 1. - 4f32 / 15f32;
-            let lucas_start = Instant::now();
-            if !target.is_eslprp(None) {
-                eprintln!("Extra-strong Lucas test found a {}-bit number composite after {}", target.bits(),
-                          ReadableDuration(lucas_start.elapsed()));
-                return Primality::No;
-            }
-            eprintln!("Extra-strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+        eprintln!("Strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+                  ReadableDuration(lucas_start.elapsed()));
+        probability *= 1. - 4f32 / 15f32;
+        let lucas_start = Instant::now();
+        if !target.is_eslprp(None) {
+            eprintln!("Extra-strong Lucas test found a {}-bit number composite after {}", target.bits(),
                       ReadableDuration(lucas_start.elapsed()));
+            return Primality::No;
         }
-
+        eprintln!("Extra-strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+                  ReadableDuration(lucas_start.elapsed()));
         Primality::Probable(probability)
     }
 }
