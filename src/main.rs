@@ -79,43 +79,43 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 break;
             }
         }
-        let min_root_bits = (last_prime + 2).bits() as u64;
-        let start_roots = time::Instant::now();
-        let num = product_m2_as_biguint(p, q);
-        let mut remaining_roots = NUM_TRIAL_ROOTS;
-        for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
-            if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
-                // Higher roots would've been found by trial divisions already
-                eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
-                          prime, p + q, remaining_roots);
-                break;
+        if factors.is_empty() {
+            let min_root_bits = (last_prime + 2).bits() as u64;
+            let start_roots = time::Instant::now();
+            let num = product_m2_as_biguint(p, q);
+            let mut remaining_roots = NUM_TRIAL_ROOTS;
+            for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
+                if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
+                    // Higher roots would've been found by trial divisions already
+                    eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
+                              prime, p + q, remaining_roots);
+                    break;
+                }
+                remaining_roots -= 1;
+                if prime == 2 && p + q < 100_000_000 {
+                    // Previous runs have ruled out numbers in this range being perfect squares
+                    continue;
+                }
+                if num.is_nth_power(prime as u32) {
+                    eprintln!("Trial root found {} root of a {}-bit number in {}",
+                              prime, p + q, ReadableDuration(start_trials.elapsed()));
+                    return Some(PrimalityResult {
+                        result: No,
+                        source: format!("Trial nth root: {} and factors: {:?}", prime, factors).into(),
+                    });
+                } else if p + q > 100_000 || remaining_roots == 0 {
+                    eprintln!("{}-bit number has no {} root (trying roots for {})",
+                              p + q, prime, ReadableDuration(start_roots.elapsed()));
+                }
             }
-            remaining_roots -= 1;
-            if prime == 2 && p + q < 100_000_000 {
-                // Previous runs have ruled out numbers in this range being perfect squares
-                continue;
-            }
-            if num.is_nth_power(prime as u32) {
-                eprintln!("Trial root found {} root of a {}-bit number in {}",
-                          prime, p + q, ReadableDuration(start_trials.elapsed()));
-                return Some(PrimalityResult {
-                    result: No,
-                    source: format!("Trial nth root: {} and factors: {:?}", prime, factors).into(),
-                });
-            } else if p + q > 100_000 || remaining_roots == 0 {
-                eprintln!("{}-bit number has no {} root (trying roots for {})",
-                          p + q, prime, ReadableDuration(start_roots.elapsed()));
-            }
+            eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
+                      p + q, start_roots.elapsed().as_nanos());
+            return None;
         }
-        eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
-                  p + q, start_roots.elapsed().as_nanos());
-        if !factors.is_empty() {
-            return Some(PrimalityResult {
-                result: No,
-                source: format!("Trial divisions by {:?}", factors).into(),
-            });
-        }
-        return None;
+        Some(PrimalityResult {
+            result: No,
+            source: format!("Trial divisions by {:?}", factors).into(),
+        })
     });
     join_set.spawn(async move {
         let buffer = get_buffer();
