@@ -9,7 +9,6 @@ use std::fs::File;
 use std::io::Write;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
-use std::time;
 use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
 use Primality::{No, Yes};
@@ -39,7 +38,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let buffer = get_buffer();
         let mut last_prime = 0;
         let mut factors = Vec::with_capacity(3);
-        let start_trials = time::Instant::now();
+        let start_trials = Instant::now();
         for prime in buffer.primes(u64::MAX) {
             if prime != p && prime != q {
                 let prime = prime as u128;
@@ -81,7 +80,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         }
         if factors.is_empty() {
             let min_root_bits = (last_prime + 2).bits() as u64;
-            let start_roots = time::Instant::now();
+            let start_roots = Instant::now();
             let num = product_m2_as_biguint(p, q);
             let mut remaining_roots = NUM_TRIAL_ROOTS;
             for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
@@ -120,7 +119,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     join_set.spawn(async move {
         let buffer = get_buffer();
         tokio::task::yield_now().await;
-        let start_is_prime = time::Instant::now();
+        let start_is_prime = Instant::now();
         let product_m2 = product_m2_as_biguint(p, q);
         let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
