@@ -27,6 +27,7 @@ pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
+#[inline]
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let mut trial_factors = Vec::new();
     for small_factor in [5, 7] {
@@ -152,6 +153,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     panic!("Both trial divisions and is_prime failed for a {}-bit number", p + q);
 }
 
+#[inline]
 fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let mut power = 0;
     if prime != p && prime != q {

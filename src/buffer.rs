@@ -112,6 +112,7 @@ impl ConcurrentPrimeBuffer {
         eprintln!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
     }
 
+    #[inline]
     pub fn is_prime(
         &self,
         target: &BigUint,
