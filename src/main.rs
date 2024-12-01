@@ -99,16 +99,17 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                   p + q, start_roots.elapsed().as_nanos());
         return None;
     });
-    let config = CONFIG.get_or_init(|| {
-        let mut config = PrimalityTestConfig::default();
-        config.sprp_trials = 8;
-        config.sprp_random_trials = 4;
-        config.slprp_test = true;
-        config.eslprp_test = true;
-        Some(config)
-    });
     join_set.spawn(async move {
         let buffer = get_buffer();
+        let config = CONFIG.get_or_init(|| {
+            let mut config = PrimalityTestConfig::default();
+            config.sprp_trials = 8;
+            config.sprp_random_trials = 4;
+            config.slprp_test = true;
+            config.eslprp_test = true;
+            Some(config)
+        });
+        tokio::task::yield_now().await;
         let start_is_prime = time::Instant::now();
         let product_m2 = product_m2_as_biguint(p, q);
         let result = buffer.is_prime(&product_m2, *config);
