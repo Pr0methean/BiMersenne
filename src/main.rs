@@ -186,6 +186,7 @@ async fn main() {
     }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;
+    let mut factorize128_calls = 0;
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
         for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
@@ -195,6 +196,7 @@ async fn main() {
                 continue;
             }
             if p + q <= 128 {
+                factorize128_calls += 1;
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let product = m_p as u128 * m_q;
@@ -219,7 +221,8 @@ async fn main() {
             }
         }
     }
-    eprintln!("All computation tasks launched; {} will use is_prime or trial divisions", is_prime_calls);
+    eprintln!("All computation tasks launched: {} using factorize128, {} using is_prime or trial divisions",
+              factorize128_calls, is_prime_calls);
     for task in output_tasks.into_iter() {
         task.await.unwrap();
     }
