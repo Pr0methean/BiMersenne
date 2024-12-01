@@ -159,7 +159,6 @@ fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
 fn get_buffer() -> &'static ConcurrentPrimeBuffer {
     BUFFER.get_or_init(|| {
         let buffer = ConcurrentPrimeBuffer::new();
-        buffer.get_nth(MAX_TRIAL_DIVISIONS);
         buffer
     })
 }
@@ -177,7 +176,9 @@ impl Display for PrimalityResult {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    tokio::spawn(async { get_buffer() }); // Start building buffer ahead of time
+    tokio::spawn(async {
+        get_buffer().get_nth(MAX_TRIAL_DIVISIONS);
+    }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
