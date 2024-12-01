@@ -31,7 +31,7 @@ impl <'a> Iterator for ConcurrentPrimeBufferIter<'a> {
 }
 
 impl ConcurrentPrimeBuffer {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         ConcurrentPrimeBuffer(RwLock::new(Vec::from(SMALL_PRIMES.map(u64::from))))
     }
 
