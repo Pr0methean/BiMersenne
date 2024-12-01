@@ -10,7 +10,7 @@ use std::io::Write;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
 use Primality::{No, Yes};
 use tokio::task::JoinSet;
@@ -199,9 +199,11 @@ async fn main() {
                 factorize128_calls += 1;
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
-                let product = m_p as u128 * m_q;
+                let productm2 = m_p as u128 * m_q - 2;
                 output_tasks.push(tokio::spawn(async move {
-                    let factors = factorize128(product - 2);
+                    let start_factorize128 = Instant::now();
+                    let factors = factorize128(productm2);
+                    eprintln!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
                     let result = PrimalityResult {
                         result: if factors.values().sum::<usize>() == 1 {
                             Yes
