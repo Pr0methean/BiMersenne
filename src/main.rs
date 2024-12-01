@@ -45,6 +45,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 let prime = prime as u128;
                 let mut modulus = prime;
                 let mut remainder;
+                let mut factor_found = false;
                 loop {
                     remainder = mod_exp(2u128, (p + q) as u128, modulus)
                         + (prime - mod_exp(2u128, p as u128, modulus))
@@ -56,11 +57,12 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                         eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
                                   prime, p + q, ReadableDuration(start_trials.elapsed()));
                         modulus *= prime;
+                        factor_found = true;
                     } else {
                         break;
                     }
                 }
-                if prime > 7 {
+                if factor_found && prime > 7 {
                     return Some(PrimalityResult {
                         result: No,
                         source: format!("Trial divisions by {:?}", factors).into(),
