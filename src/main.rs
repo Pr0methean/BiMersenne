@@ -40,7 +40,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let mut last_prime = 0;
         let mut factors = Vec::with_capacity(3);
         let start_trials = time::Instant::now();
-        for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
+        for prime in buffer.primes(u64::MAX) {
             if prime != p && prime != q {
                 let prime = prime as u128;
                 let mut modulus = prime;
@@ -74,6 +74,9 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             if divisions_done % report_progress_every == 0 {
                 eprintln!("{} trial divisions done for a {}-bit number in {}",
                           divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
+            }
+            if divisions_done >= MAX_TRIAL_DIVISIONS {
+                break;
             }
         }
         let min_root_bits = (last_prime + 2).bits() as u64;
