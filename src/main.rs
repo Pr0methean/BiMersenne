@@ -88,7 +88,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                           prime, p + q, ReadableDuration(start_trials.elapsed()));
                 return Some(PrimalityResult {
                     result: No,
-                    source: format!("Trial nth root: {}", prime).into(),
+                    source: format!("Trial nth root: {} and factors: {:?}", prime, factors).into(),
                 });
             } else if p + q > 100_000 || remaining_roots == 0 {
                 eprintln!("{}-bit number has no {} root (trying roots for {})",
@@ -97,6 +97,12 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         }
         eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
                   p + q, start_roots.elapsed().as_nanos());
+        if !factors.is_empty() {
+            return Some(PrimalityResult {
+                result: No,
+                source: format!("Trial divisions by {:?}", factors).into(),
+            });
+        }
         return None;
     });
     join_set.spawn(async move {
