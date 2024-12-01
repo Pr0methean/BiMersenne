@@ -9,10 +9,10 @@ use std::fs::File;
 use std::io::Write;
 use std::iter;
 use std::ops::{Shl, Sub};
+use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
 use Primality::{No, Yes};
-use tokio::sync::OnceCell;
 use tokio::task::{yield_now, JoinSet};
 use crate::buffer::ConcurrentPrimeBuffer;
 
@@ -25,7 +25,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
-static BUFFER: OnceCell<ConcurrentPrimeBuffer> = OnceCell::const_new();
+static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 #[inline]
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
@@ -43,7 +43,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             10_000_000..100_000_000 => 1 << 22,
             _ => 1 << 20,
         };
-        let buffer = get_buffer().await;
+        let buffer = get_buffer();
         let mut bound = buffer.bound();
         let mut last_prime = 0;
         let start_trials = Instant::now();
@@ -111,7 +111,8 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         })
     });
     join_set.spawn(async move {
-        let buffer = get_buffer().await;
+        let buffer = get_buffer();
+        tokio::task::yield_now().await;
         let start_is_prime = Instant::now();
         let mut product_m2 = product_m2_as_biguint(p, q);
         let no_small_factors = small_factors.is_empty();
@@ -127,7 +128,6 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 small_factors_list, large_factors).into()
             });
         }
-        tokio::task::yield_now().await;
         let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
         drop(product_m2);
@@ -199,8 +199,11 @@ fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
     product_m2
 }
 
-async fn get_buffer() -> &'static ConcurrentPrimeBuffer {
-    BUFFER.get_or_init(ConcurrentPrimeBuffer::new).await
+fn get_buffer() -> &'static ConcurrentPrimeBuffer {
+    BUFFER.get_or_init(|| {
+        let buffer = ConcurrentPrimeBuffer::new();
+        buffer
+    })
 }
 
 struct PrimalityResult {
@@ -217,7 +220,7 @@ impl Display for PrimalityResult {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tokio::spawn(async {
-        get_buffer().await.get_nth(MAX_TRIAL_DIVISIONS);
+        get_buffer().get_nth(MAX_TRIAL_DIVISIONS);
     }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;
