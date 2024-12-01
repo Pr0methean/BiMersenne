@@ -17,16 +17,16 @@ pub struct ConcurrentPrimeBuffer(RwLock<Vec<u64>>);
 
 pub struct ConcurrentPrimeBufferIter<'a> {
     buffer: &'a ConcurrentPrimeBuffer,
-    index: usize,
+    index: u64,
 }
 
 impl <'a> Iterator for ConcurrentPrimeBufferIter<'a> {
     type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.buffer.0.read().get(self.index).copied();
+        let result = self.buffer.get_nth(self.index);
         self.index += 1;
-        result
+        Some(result)
     }
 }
 
@@ -60,7 +60,6 @@ impl ConcurrentPrimeBuffer {
     }
 
     pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
-        self.reserve_concurrent(limit);
         let position = match self.0.read().binary_search(&limit) {
             Ok(p) => p + 1,
             Err(p) => p,
@@ -125,7 +124,7 @@ impl ConcurrentPrimeBuffer {
         // miller-rabin test
         let mr_start = Instant::now();
         let mut witness_list: Vec<u64> = Vec::with_capacity((SPRP_TRIALS + RANDOM_SPRP_TRIALS) as usize);
-        witness_list.extend(self.primes(SPRP_TRIALS as u64));
+        witness_list.extend(self.primes(SPRP_TRIALS));
         probability *= 1. - 0.25f32.powi(SPRP_TRIALS as i32);
         for _ in 0..RANDOM_SPRP_TRIALS {
             // we have ensured target is larger than 2^64
