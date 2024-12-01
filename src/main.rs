@@ -13,7 +13,7 @@ use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
 use Primality::{No, Yes};
-use tokio::task::JoinSet;
+use tokio::task::{yield_now, JoinSet};
 use crate::buffer::ConcurrentPrimeBuffer;
 
 pub const MERSENNE_EXPONENTS: [u32; 52] = [
@@ -44,6 +44,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             _ => 1 << 20,
         };
         let buffer = get_buffer();
+        let mut bound = buffer.bound();
         let mut last_prime = 0;
         let start_trials = Instant::now();
         for prime in buffer.primes(u64::MAX).skip(4) {
@@ -65,6 +66,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             }
             if divisions_done >= MAX_TRIAL_DIVISIONS {
                 break;
+            }
+            if prime >= bound {
+                yield_now().await;
+                bound = buffer.bound();
             }
         }
         if trial_factors.is_empty() {
