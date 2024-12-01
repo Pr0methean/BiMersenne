@@ -43,9 +43,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let start_trials = time::Instant::now();
         for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if prime != p && prime != q {
-                let pq_mod = mod_exp(2, p + q, prime)
-                    + (prime - mod_exp(2, p, prime))
-                    + (prime - mod_exp(2, q, prime))
+                let prime = prime as u128;
+                let pq_mod = mod_exp(2u128, (p + q) as u128, prime)
+                    + (prime - mod_exp(2u128, p as u128, prime))
+                    + (prime - mod_exp(2u128, q as u128, prime))
                     - 1;
                 if pq_mod % prime == 0 {
                     factors.push(prime);
