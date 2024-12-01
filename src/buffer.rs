@@ -51,7 +51,7 @@ impl ConcurrentPrimeBuffer {
             drop(list);
             if len * 2 < n && bound > n {
                 self.reserve_concurrent(bound * 2);
-            } else {
+            } else if len < n {
                 self.reserve_concurrent(bound + n);
             }
             out = self.0.read().get(n as usize).copied();
