@@ -44,20 +44,28 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if prime != p && prime != q {
                 let prime = prime as u128;
-                let pq_mod = mod_exp(2u128, (p + q) as u128, prime)
-                    + (prime - mod_exp(2u128, p as u128, prime))
-                    + (prime - mod_exp(2u128, q as u128, prime))
-                    - 1;
-                if pq_mod % prime == 0 {
-                    factors.push(prime);
-                    eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
-                              prime, p + q, ReadableDuration(start_trials.elapsed()));
-                    if prime > 7 {
-                        return Some(PrimalityResult {
-                            result: No,
-                            source: format!("Trial divisions by {:?}", factors).into(),
-                        });
+                let mut modulus = prime;
+                let mut remainder;
+                loop {
+                    remainder = mod_exp(2u128, (p + q) as u128, modulus)
+                        + (prime - mod_exp(2u128, p as u128, modulus))
+                        + (prime - mod_exp(2u128, q as u128, modulus))
+                        - 1;
+                    remainder %= prime;
+                    if remainder == 0 {
+                        factors.push(prime);
+                        eprintln!("Trial division found {} as a factor of a {}-bit number in {}",
+                                  prime, p + q, ReadableDuration(start_trials.elapsed()));
+                        modulus *= prime;
+                    } else {
+                        break;
                     }
+                }
+                if prime > 7 {
+                    return Some(PrimalityResult {
+                        result: No,
+                        source: format!("Trial divisions by {:?}", factors).into(),
+                    });
                 }
             }
             last_prime = prime;
