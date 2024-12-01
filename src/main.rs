@@ -39,7 +39,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         };
         let buffer = get_buffer();
         let mut last_prime = 0;
-        let mut factors = vec![];
+        let mut factors = Vec::with_capacity(3);
         let start_trials = time::Instant::now();
         for prime in buffer.primes(buffer.get_nth(MAX_TRIAL_DIVISIONS)) {
             if prime != p && prime != q {
