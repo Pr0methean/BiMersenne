@@ -170,17 +170,18 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let mut modulus = prime;
     loop {
         if modulus > 1<<64 {
+            let prime = BigUint::from(prime);
             let two = two();
             let mut modulus = BigUint::from(modulus);
             let mut remainder;
             loop {
                 remainder = two.modpow(&BigUint::from(p + q), &modulus)
-                    + (BigUint::from(prime) - two.modpow(&BigUint::from(p), &modulus))
-                    + (BigUint::from(prime) - two.modpow(&BigUint::from(q), &modulus))
+                    + (&prime - two.modpow(&BigUint::from(p), &modulus))
+                    + (&prime - two.modpow(&BigUint::from(q), &modulus))
                     - one();
                 remainder %= &modulus;
                 if remainder == BigUint::ZERO {
-                    modulus *= BigUint::from(prime);
+                    modulus *= &prime;
                     power += 1;
                 } else {
                     return power;
