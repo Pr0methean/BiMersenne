@@ -44,7 +44,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             _ => 1 << 20,
         };
         let buffer = get_buffer();
-        let mut last_prime = 0;
+        let mut last_prime;
         let start_trials = Instant::now();
         let mut prime_iter = buffer.primes();
         loop {
