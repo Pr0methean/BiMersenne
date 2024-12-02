@@ -192,7 +192,7 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
                 + (modulus - mod_exp(2u128, p as u128, modulus))
                 + (modulus - mod_exp(2u128, q as u128, modulus))
                 - 1;
-            remainder %= prime;
+            remainder %= modulus;
             if remainder == 0 {
                 modulus *= prime;
                 power += 1;
