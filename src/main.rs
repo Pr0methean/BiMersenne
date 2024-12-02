@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
 use Primality::{No, Yes};
 use tokio::task::JoinSet;
-use crate::buffer::ConcurrentPrimeBuffer;
+use crate::buffer::{ConcurrentPrimeBuffer, EXPANSION_UNIT};
 
 pub const MERSENNE_EXPONENTS: [u32; 52] = [
     2, 3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607, 1279, 2203, 2281, 3217, 4253, 4423,
@@ -46,7 +46,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let buffer = get_buffer();
         let mut last_prime = 0;
         let start_trials = Instant::now();
-        for prime in buffer.primes(u64::MAX).skip(4) {
+        for prime in buffer.primes().skip(4) {
             let power = trial_division(p, q, prime);
             if power > 0 {
                 eprintln!("Trial division found factor of {}^{} for a {}-bit number in {}",
@@ -72,7 +72,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             let start_roots = Instant::now();
             let num = product_m2_as_biguint(p, q);
             let mut remaining_roots = NUM_TRIAL_ROOTS;
-            for prime in buffer.primes(buffer.get_nth(NUM_TRIAL_ROOTS)) {
+            for prime in buffer.primes().take(NUM_TRIAL_ROOTS as usize) {
                 if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
                     // Higher roots would've been found by trial divisions already
                     eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
@@ -215,7 +215,10 @@ impl Display for PrimalityResult {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tokio::spawn(async {
-        get_buffer().get_nth(MAX_TRIAL_DIVISIONS);
+        let buffer = get_buffer();
+        while buffer.len() < MAX_TRIAL_DIVISIONS {
+            buffer.reserve_concurrent(buffer.bound() + EXPANSION_UNIT);
+        }
     }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
     let mut is_prime_calls = 0;

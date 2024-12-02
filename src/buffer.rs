@@ -1,82 +1,80 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
+use concurrent_list::{Iter, Reader, Writer};
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_prime::detail::SMALL_PRIMES;
 use num_prime::{Primality, PrimalityUtils};
-use parking_lot::RwLock;
+use parking_lot::{Mutex};
 use rand::rngs::ThreadRng;
 use rand::RngCore;
 use crate::ReadableDuration;
 
 const SPRP_TRIALS: u64 = 8;
 const RANDOM_SPRP_TRIALS: u64 = 4;
+pub const EXPANSION_UNIT: u64 = 1 << 24;
 
-pub struct ConcurrentPrimeBuffer(RwLock<Vec<u64>>);
-
-pub struct ConcurrentPrimeBufferIter<'a> {
-    buffer: &'a ConcurrentPrimeBuffer,
-    index: u64,
+pub struct ConcurrentPrimeBuffer {
+    reader: Reader<u64>,
+    writer: Mutex<Writer<u64>>,
+    bound: AtomicU64,
+    len: AtomicU64
 }
 
-impl <'a> Iterator for ConcurrentPrimeBufferIter<'a> {
+pub struct ConcurrentPrimeBufferIter<'a> {
+    iter: Iter<'a, u64>,
+    buffer: &'a ConcurrentPrimeBuffer
+}
+
+impl Iterator for ConcurrentPrimeBufferIter<'_> {
     type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.buffer.get_nth(self.index);
-        self.index += 1;
-        Some(result)
+        let mut next_read = self.iter.next();
+        while next_read.is_none() {
+            self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT);
+            next_read = self.iter.next();
+        }
+        Some(*next_read.unwrap())
     }
 }
 
 impl ConcurrentPrimeBuffer {
     pub fn new() -> Self {
-        ConcurrentPrimeBuffer(RwLock::new(Vec::from(SMALL_PRIMES.map(u64::from))))
+        let (mut writer, reader) = concurrent_list::new();
+        SMALL_PRIMES.iter().for_each(|prime| writer.push(*prime as u64));
+        ConcurrentPrimeBuffer {
+            reader,
+            writer: Mutex::new(writer),
+            len: AtomicU64::new(SMALL_PRIMES.len() as u64),
+            bound: AtomicU64::new(*SMALL_PRIMES.last().unwrap() as u64)
+        }
     }
-
-    pub fn copying_iter(&self) -> ConcurrentPrimeBufferIter {
+    pub fn primes(&self) -> ConcurrentPrimeBufferIter {
         ConcurrentPrimeBufferIter {
-            buffer: self,
-            index: 0,
+            iter: self.reader.iter(),
+            buffer: &self
         }
-    }
-
-    pub fn get_nth(&self, n: u64) -> u64 {
-        let mut out = self.0.read().get(n as usize).copied();
-        while out.is_none() {
-            let list = self.0.read();
-            let len = list.len() as u64;
-            let bound = *list.last().unwrap();
-            drop(list);
-            if len < n {
-                self.reserve_concurrent(bound + n);
-            }
-            out = self.0.read().get(n as usize).copied();
-        }
-        out.unwrap()
-    }
-
-    pub fn primes(&self, limit: u64) -> std::iter::Take<ConcurrentPrimeBufferIter> {
-        let position = match self.0.read().binary_search(&limit) {
-            Ok(p) => p + 1,
-            Err(p) => p,
-        }; // into_ok_or_err()
-        self.copying_iter().take(position)
     }
 
     pub fn bound(&self) -> u64 {
-        *self.0.read().last().unwrap()
+        self.bound.load(Ordering::Acquire)
     }
 
-    fn reserve_concurrent(&self, limit: u64) {
+    pub fn len(&self) -> u64 {
+        self.len.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn reserve_concurrent(&self, limit: u64) {
+        let mut writer = self.writer.lock();
         let sieve_limit = (limit | 1) + 2; // make sure sieving limit is odd and larger than limit
         let current = self.bound();
         if sieve_limit < current {
             return;
         }
-        let mut list = self.0.write();
-        let current = list.last().copied().unwrap();
+        let current = self.bound();
         if sieve_limit < current {
             return;
         }
@@ -84,7 +82,8 @@ impl ConcurrentPrimeBuffer {
         let sieve_start = Instant::now();
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
-        for p in list.iter().skip(1).copied() {
+        for p in self.reader.iter().skip(1) {
+            let p = *p;
             // skip pre-filtered 2
             let start = if p * p < current {
                 p * ((current / p) | 1) // start from an odd factor
@@ -108,7 +107,15 @@ impl ConcurrentPrimeBuffer {
         }
 
         // collect the sieve
-        list.extend(sieve.iter_zeros().map(|x| (x as u64) * 2 + current));
+        let mut size_increase = 0;
+        let mut new_bound = 0;
+        sieve.iter_zeros().map(|x| (x as u64) * 2 + current).for_each(|x| {
+            writer.push(x);
+            size_increase += 1;
+            new_bound = x;
+        });
+        self.len.fetch_add(size_increase, Ordering::AcqRel);
+        self.bound.store(new_bound, Ordering::Release);
         eprintln!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
     }
 
@@ -123,7 +130,7 @@ impl ConcurrentPrimeBuffer {
         // miller-rabin test
         let mr_start = Instant::now();
         let mut witness_list: Vec<u64> = Vec::with_capacity((SPRP_TRIALS + RANDOM_SPRP_TRIALS) as usize);
-        witness_list.extend(self.primes(SPRP_TRIALS));
+        witness_list.extend(self.primes().take(SPRP_TRIALS as usize));
         probability *= 1. - 0.25f32.powi(SPRP_TRIALS as i32);
         for _ in 0..RANDOM_SPRP_TRIALS {
             // we have ensured target is larger than 2^64
