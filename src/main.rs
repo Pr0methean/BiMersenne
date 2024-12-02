@@ -162,26 +162,48 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
 
 #[inline]
 fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
+    if prime == p || prime == q {
+        return 0;
+    }
     let mut power = 0;
-    if prime != p && prime != q {
-        let prime = prime as u128;
-        let mut modulus = prime;
-        let mut remainder;
-        loop {
-            remainder = mod_exp(2u128, (p + q) as u128, modulus)
+    let prime = prime as u128;
+    let mut modulus = prime;
+    loop {
+        if modulus > 1<<64 {
+            let two = two();
+            let mut modulus = BigUint::from(modulus);
+            let mut remainder;
+            loop {
+                remainder = two.modpow(&BigUint::from(p + q), &modulus)
+                    + (BigUint::from(prime) - two.modpow(&BigUint::from(p), &modulus))
+                    + (BigUint::from(prime) - two.modpow(&BigUint::from(q), &modulus))
+                    - one();
+                remainder %= &modulus;
+                if remainder == BigUint::ZERO {
+                    modulus *= BigUint::from(prime);
+                    power += 1;
+                } else {
+                    return power;
+                }
+            }
+        } else {
+            let mut remainder = mod_exp(2u128, (p + q) as u128, modulus)
                 + (prime - mod_exp(2u128, p as u128, modulus))
                 + (prime - mod_exp(2u128, q as u128, modulus))
                 - 1;
-            remainder %= prime;
+            remainder %= prime as u128;
             if remainder == 0 {
-                modulus *= prime;
+                modulus *= prime as u128;
                 power += 1;
             } else {
-                break;
+                return power;
             }
         }
     }
-    power
+}
+
+fn two() -> BigUint {
+    BigUint::from(2u8)
 }
 
 fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
