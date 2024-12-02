@@ -33,11 +33,10 @@ impl Iterator for ConcurrentPrimeBufferIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut next_read = self.iter.next();
-        while next_read.is_none() {
-            self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT);
+        while next_read.is_none() && self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT) {
             next_read = self.iter.next();
         }
-        Some(*next_read.unwrap())
+        next_read.map(|x| *x)
     }
 }
 
@@ -67,16 +66,14 @@ impl ConcurrentPrimeBuffer {
         self.len.load(Ordering::Acquire)
     }
 
-    pub(crate) fn reserve_concurrent(&self, limit: u64) {
-        let mut writer = self.writer.lock();
+    pub(crate) fn reserve_concurrent(&self, limit: u64) -> bool {
+        let Some(mut writer) = self.writer.try_lock() else {
+            return false;
+        };
         let sieve_limit = (limit | 1) + 2; // make sure sieving limit is odd and larger than limit
         let current = self.bound();
         if sieve_limit < current {
-            return;
-        }
-        let current = self.bound();
-        if sieve_limit < current {
-            return;
+            return true;
         }
         eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
         let sieve_start = Instant::now();
@@ -117,6 +114,7 @@ impl ConcurrentPrimeBuffer {
         self.len.fetch_add(size_increase, Ordering::AcqRel);
         self.bound.store(new_bound, Ordering::Release);
         eprintln!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
+        true
     }
 
     #[inline]
