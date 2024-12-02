@@ -176,8 +176,8 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
             let mut remainder;
             loop {
                 remainder = two.modpow(&BigUint::from(p + q), &modulus)
-                    + (&prime - two.modpow(&BigUint::from(p), &modulus))
-                    + (&prime - two.modpow(&BigUint::from(q), &modulus))
+                    + (&modulus - two.modpow(&BigUint::from(p), &modulus))
+                    + (&modulus - two.modpow(&BigUint::from(q), &modulus))
                     - one();
                 remainder %= &modulus;
                 if remainder == BigUint::ZERO {
@@ -189,12 +189,12 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
             }
         } else {
             let mut remainder = mod_exp(2u128, (p + q) as u128, modulus)
-                + (prime - mod_exp(2u128, p as u128, modulus))
-                + (prime - mod_exp(2u128, q as u128, modulus))
+                + (modulus - mod_exp(2u128, p as u128, modulus))
+                + (modulus - mod_exp(2u128, q as u128, modulus))
                 - 1;
-            remainder %= prime as u128;
+            remainder %= prime;
             if remainder == 0 {
-                modulus *= prime as u128;
+                modulus *= prime;
                 power += 1;
             } else {
                 return power;
