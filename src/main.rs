@@ -11,6 +11,7 @@ use std::iter;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
+use log::info;
 use mod_exp::mod_exp;
 use num_prime::detail::SMALL_PRIMES;
 use Primality::{No, Yes};
@@ -57,7 +58,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             let prime = prime.unwrap();
             let power = trial_division(p, q, prime);
             if power > 0 {
-                eprintln!("Trial division found factor of {}^{} for a {}-bit number in {}",
+                info!("Trial division found factor of {}^{} for a {}-bit number in {}",
                     prime, power, p+q, ReadableDuration(start_trials.elapsed()));
                 trial_factors.extend(iter::repeat(prime).take(power as usize));
                 return Some(PrimalityResult {
@@ -68,7 +69,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             last_prime = prime;
             divisions_done += 1;
             if divisions_done % report_progress_every == 0 {
-                eprintln!("{} trial divisions done for a {}-bit number in {}",
+                info!("{} trial divisions done for a {}-bit number in {}",
                           divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
             }
             if divisions_done >= MAX_TRIAL_DIVISIONS {
@@ -83,7 +84,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
                 if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
                     // Higher roots would've been found by trial divisions already
-                    eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
+                    info!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
                               prime, p + q, remaining_roots);
                     break;
                 }
@@ -93,18 +94,18 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                     continue;
                 }
                 if num.is_nth_power(prime as u32) {
-                    eprintln!("Trial root found {} root of a {}-bit number in {}",
+                    info!("Trial root found {} root of a {}-bit number in {}",
                               prime, p + q, ReadableDuration(start_trials.elapsed()));
                     return Some(PrimalityResult {
                         result: No,
                         source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
                     });
                 } else {
-                    eprintln!("{}-bit number has no {} root (trying roots for {})",
+                    info!("{}-bit number has no {} root (trying roots for {})",
                               p + q, prime, ReadableDuration(start_roots.elapsed()));
                 }
             }
-            eprintln!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
+            info!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
                       p + q, start_roots.elapsed().as_nanos());
             return None;
         }
@@ -132,11 +133,11 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             });
         }
         let bits = product_m2.bits();
-        eprintln!("Calling is_prime for a {}-bit number", bits);
+        info!("Calling is_prime for a {}-bit number", bits);
         let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
         drop(product_m2);
-        eprintln!(
+        info!(
             "is_prime for a {}-bit number took {} and returned {:?}",
             bits,
             ReadableDuration(elapsed),
@@ -247,6 +248,7 @@ impl Display for PrimalityResult {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    simple_logger::init().unwrap();
     tokio::spawn(async {
         let buffer = get_buffer();
         while buffer.len() < MAX_TRIAL_DIVISIONS {
@@ -272,7 +274,7 @@ async fn main() {
                 output_tasks.push(tokio::spawn(async move {
                     let start_factorize128 = Instant::now();
                     let factors = factorize128(productm2);
-                    eprintln!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
+                    info!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
                     let result = PrimalityResult {
                         result: if factors.values().sum::<usize>() == 1 {
                             Yes
@@ -292,7 +294,7 @@ async fn main() {
             }
         }
     }
-    eprintln!("All computation tasks launched: {} using factorize128, {} using is_prime or trial divisions",
+    info!("All computation tasks launched: {} using factorize128, {} using is_prime or trial divisions",
               factorize128_calls, is_prime_calls);
     for task in output_tasks.into_iter() {
         task.await.unwrap();

@@ -3,6 +3,7 @@ use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
 use concurrent_list::{Iter, Reader, Writer};
+use log::info;
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_prime::detail::SMALL_PRIMES;
@@ -75,7 +76,7 @@ impl ConcurrentPrimeBuffer {
         if sieve_limit < current {
             return true;
         }
-        eprintln!("Expanding prime limit from {} to {}", current, sieve_limit);
+        info!("Expanding prime limit from {} to {}", current, sieve_limit);
         let sieve_start = Instant::now();
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
@@ -113,7 +114,7 @@ impl ConcurrentPrimeBuffer {
         });
         self.len.fetch_add(size_increase, Ordering::AcqRel);
         self.bound.store(new_bound, Ordering::Release);
-        eprintln!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
+        info!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
         true
     }
 
@@ -144,35 +145,35 @@ impl ConcurrentPrimeBuffer {
             .all(|x| {
                 let mr_start = Instant::now();
                 let result = target.is_sprp(BigUint::from(x));
-                eprintln!("Miller-Rabin test for a {}-bit number with witness {} took {} and returned {}",
+                info!("Miller-Rabin test for a {}-bit number with witness {} took {} and returned {}",
                           target.bits(), x, ReadableDuration(mr_start.elapsed()), result);
                 result
             })
         {
-            eprintln!("Miller-Rabin test found a {}-bit number composite after {}", target.bits(),
+            info!("Miller-Rabin test found a {}-bit number composite after {}", target.bits(),
                       ReadableDuration(mr_start.elapsed()));
             return Primality::No;
         }
-        eprintln!("Miller-Rabin test failed to prove a {}-bit number composite after {}", target.bits(),
+        info!("Miller-Rabin test failed to prove a {}-bit number composite after {}", target.bits(),
                   ReadableDuration(mr_start.elapsed()));
         // lucas probable prime test
         probability *= 1. - 4f32 / 15f32;
         let lucas_start = Instant::now();
         if !target.is_slprp(None, None) {
-            eprintln!("Strong Lucas test found a {}-bit number composite after {}", target.bits(),
+            info!("Strong Lucas test found a {}-bit number composite after {}", target.bits(),
                       ReadableDuration(lucas_start.elapsed()));
             return Primality::No;
         }
-        eprintln!("Strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+        info!("Strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
                   ReadableDuration(lucas_start.elapsed()));
         probability *= 1. - 4f32 / 15f32;
         let lucas_start = Instant::now();
         if !target.is_eslprp(None) {
-            eprintln!("Extra-strong Lucas test found a {}-bit number composite after {}", target.bits(),
+            info!("Extra-strong Lucas test found a {}-bit number composite after {}", target.bits(),
                       ReadableDuration(lucas_start.elapsed()));
             return Primality::No;
         }
-        eprintln!("Extra-strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
+        info!("Extra-strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
                   ReadableDuration(lucas_start.elapsed()));
         Primality::Probable(probability)
     }
