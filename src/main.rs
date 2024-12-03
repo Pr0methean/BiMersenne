@@ -229,10 +229,7 @@ fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
 }
 
 fn get_buffer() -> &'static ConcurrentPrimeBuffer {
-    BUFFER.get_or_init(|| {
-        let buffer = ConcurrentPrimeBuffer::new();
-        buffer
-    })
+    BUFFER.get_or_init(ConcurrentPrimeBuffer::new)
 }
 
 struct PrimalityResult {

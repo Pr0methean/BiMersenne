@@ -55,7 +55,7 @@ impl ConcurrentPrimeBuffer {
     pub fn primes(&self) -> ConcurrentPrimeBufferIter {
         ConcurrentPrimeBufferIter {
             iter: self.reader.iter(),
-            buffer: &self
+            buffer: self
         }
     }
 
@@ -134,7 +134,7 @@ impl ConcurrentPrimeBuffer {
         for _ in 0..RANDOM_SPRP_TRIALS {
             // we have ensured target is larger than 2^64
             let mut w: u64 = ThreadRng::default().next_u64();
-            while witness_list.iter().find(|&x| x == &w).is_some() {
+            while witness_list.iter().any(|x| x == &w) {
                 w = ThreadRng::default().next_u64();
             }
             witness_list.push(w);
