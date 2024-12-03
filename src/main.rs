@@ -131,12 +131,14 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 small_factors_list, large_factors).into()
             });
         }
+        let bits = product_m2.bits();
+        eprintln!("Calling is_prime for a {}-bit number", bits);
         let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
         drop(product_m2);
         eprintln!(
             "is_prime for a {}-bit number took {} and returned {:?}",
-            p + q,
+            bits,
             ReadableDuration(elapsed),
             result
         );
