@@ -11,7 +11,7 @@ use std::iter;
 use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
-use log::info;
+use log::{debug, info};
 use mod_exp::mod_exp;
 use num_prime::detail::SMALL_PRIMES;
 use Primality::{No, Yes};
@@ -61,6 +61,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             }
             let prime = prime.unwrap();
             if !semaphore_permit_added && prime > SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64 {
+                debug!("Releasing a semaphore permit");
                 WAIT_FOR_ALL_TRIAL_TASKS_STARTED.add_permits(1);
                 semaphore_permit_added = true;
             }
