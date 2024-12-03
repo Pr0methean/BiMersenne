@@ -15,6 +15,7 @@ use log::info;
 use mod_exp::mod_exp;
 use num_prime::detail::SMALL_PRIMES;
 use Primality::{No, Yes};
+use tokio::sync::Semaphore;
 use tokio::task::{yield_now, JoinSet};
 use crate::buffer::{ConcurrentPrimeBuffer, EXPANSION_UNIT};
 
@@ -28,6 +29,8 @@ pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
+static WAIT_FOR_ALL_TRIAL_TASKS_STARTED: Semaphore = Semaphore::const_new(0);
+static TRIAL_TASKS: OnceLock<u32> = OnceLock::new();
 
 #[inline]
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
@@ -39,6 +42,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let small_factors = trial_factors.clone();
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
+        WAIT_FOR_ALL_TRIAL_TASKS_STARTED.add_permits(1);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
             0..10_000_000 => 1 << 24,
@@ -115,8 +119,12 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         })
     });
     join_set.spawn(async move {
-        let buffer = get_buffer();
-        tokio::task::yield_now().await;
+        let mut trial_tasks = None;
+        while trial_tasks.is_none() {
+            yield_now().await;
+            trial_tasks = TRIAL_TASKS.get().copied();
+        }
+        drop(WAIT_FOR_ALL_TRIAL_TASKS_STARTED.acquire_many(trial_tasks.unwrap()).await.unwrap());
         let start_is_prime = Instant::now();
         let mut product_m2 = product_m2_as_biguint(p, q);
         let no_small_factors = small_factors.is_empty();
@@ -134,7 +142,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         }
         let bits = product_m2.bits();
         info!("Calling is_prime for a {}-bit number", bits);
-        let result = buffer.is_prime(&product_m2);
+        let result = get_buffer().is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
         drop(product_m2);
         info!(
@@ -293,6 +301,7 @@ async fn main() {
     }
     info!("All computation tasks launched: {} using factorize128, {} using is_prime or trial divisions",
               factorize128_calls, is_prime_calls);
+    TRIAL_TASKS.get_or_init(|| is_prime_calls);
     for task in output_tasks.into_iter() {
         task.await.unwrap();
     }
