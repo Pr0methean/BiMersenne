@@ -72,10 +72,14 @@ impl ConcurrentPrimeBuffer {
     }
 
     pub(crate) fn reserve_concurrent(&self, limit: u64) -> bool {
+        let sieve_limit = (limit | 1) + 2; // make sure sieving limit is odd and larger than limit
+        let current = self.bound();
+        if sieve_limit < current {
+            return true;
+        }
         let Some(mut writer) = self.writer.try_lock() else {
             return false;
         };
-        let sieve_limit = (limit | 1) + 2; // make sure sieving limit is odd and larger than limit
         let current = self.bound();
         if sieve_limit < current {
             return true;
