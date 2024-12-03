@@ -1,3 +1,4 @@
+use std::hint;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use bitvec::bitvec;
@@ -34,7 +35,10 @@ impl Iterator for ConcurrentPrimeBufferIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut next_read = self.iter.next();
-        while next_read.is_none() && self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT) {
+        while next_read.is_none() {
+            if !self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT) {
+                hint::spin_loop();
+            }
             next_read = self.iter.next();
         }
         next_read.map(|x| *x)
