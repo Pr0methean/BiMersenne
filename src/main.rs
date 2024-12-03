@@ -42,7 +42,6 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let small_factors = trial_factors.clone();
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
-        WAIT_FOR_ALL_TRIAL_TASKS_STARTED.add_permits(1);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
             0..10_000_000 => 1 << 24,
@@ -53,6 +52,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let start_trials = Instant::now();
         let mut prime_iter = SMALL_PRIMES.iter().map(|x| *x as u64).skip(4)
             .chain([()].into_iter().flat_map(|_| get_buffer().primes().skip(SMALL_PRIMES.len())));
+        let mut semaphore_permit_added = false;
         loop {
             let mut prime = prime_iter.next();
             while prime.is_none() {
@@ -60,6 +60,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 prime = prime_iter.next();
             }
             let prime = prime.unwrap();
+            if !semaphore_permit_added && prime > SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64 {
+                WAIT_FOR_ALL_TRIAL_TASKS_STARTED.add_permits(1);
+                semaphore_permit_added = true;
+            }
             let power = trial_division(p, q, prime);
             if power > 0 {
                 info!("Trial division found factor of {}^{} for a {}-bit number in {}",
