@@ -114,6 +114,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             source: format!("Trial divisions by {:?}", trial_factors).into(),
         })
     });
+    yield_now().await;
     join_set.spawn(async move {
         let start_is_prime = Instant::now();
         let mut product_m2 = product_m2_as_biguint(p, q);
