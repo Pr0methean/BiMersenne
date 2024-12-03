@@ -36,7 +36,22 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let power = trial_division(p, q, small_factor);
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
-    let small_factors = trial_factors.clone();
+    let small_factors_product: BigUint = trial_factors.iter().copied().map(BigUint::from).product();
+    let mut cofactor = None;
+    if p + q <= small_factors_product.bits() + 128 {
+        let mut product_m2 = product_m2_as_biguint(p, q);
+        product_m2 /= &small_factors_product;
+        if let Ok(cofactor) = u128::try_from(&product_m2) {
+            let large_factors = factorize128(cofactor);
+            return PrimalityResult {
+                result: No,
+                source: format!("factors are {:?} (trial factoring) and {:?} (factorize128)",
+                                trial_factors, large_factors).into()
+            };
+        }
+        cofactor = Some(product_m2);
+    }
+    let small_factors_list = trial_factors.clone();
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
         let mut divisions_done = 0;
@@ -121,20 +136,8 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     }
     join_set.spawn(async move {
         let start_is_prime = Instant::now();
-        let mut product_m2 = product_m2_as_biguint(p, q);
-        let no_small_factors = small_factors.is_empty();
-        let small_factors_list = format!("{:?}", small_factors);
-        for factor in small_factors {
-            product_m2 /= BigUint::from(factor);
-        }
-        if !no_small_factors && product_m2.bits() <= 128 {
-            let large_factors = factorize128(product_m2.try_into().unwrap());
-            return Some(PrimalityResult {
-                result: No,
-                source: format!("factors are {} (trial factoring) and {:?} (factorize128)",
-                small_factors_list, large_factors).into()
-            });
-        }
+        let product_m2 = cofactor.unwrap_or_else(||
+                product_m2_as_biguint(p, q) / &small_factors_product);
         let bits = product_m2.bits();
         let buffer = get_buffer();
         info!("Calling is_prime for a {}-bit number", bits);
@@ -147,7 +150,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             ReadableDuration(elapsed),
             result
         );
-        if no_small_factors {
+        if small_factors_product == one() {
             Some(PrimalityResult {
                 result,
                 source: "is_prime".into(),
