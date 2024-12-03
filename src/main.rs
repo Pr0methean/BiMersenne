@@ -115,6 +115,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         })
     });
     yield_now().await;
+    let maybe_trial_div_result = join_set.try_join_next();
+    if let Some(Ok(Some(result))) = maybe_trial_div_result {
+        return result;
+    }
     join_set.spawn(async move {
         let start_is_prime = Instant::now();
         let mut product_m2 = product_m2_as_biguint(p, q);
