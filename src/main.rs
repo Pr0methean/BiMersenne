@@ -256,7 +256,9 @@ async fn main() {
     tokio::spawn(async {
         let buffer = get_buffer();
         while buffer.len() < MAX_TRIAL_DIVISIONS {
-            buffer.reserve_concurrent(buffer.bound() + EXPANSION_UNIT);
+            if !buffer.reserve_concurrent(buffer.bound() + EXPANSION_UNIT) {
+                yield_now().await;
+            }
         }
     }); // Start building buffer ahead of time
     let mut output_tasks = Vec::new();
