@@ -12,6 +12,7 @@ use std::ops::{Shl, Sub};
 use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
 use mod_exp::mod_exp;
+use num_prime::detail::SMALL_PRIMES;
 use Primality::{No, Yes};
 use tokio::task::{yield_now, JoinSet};
 use crate::buffer::{ConcurrentPrimeBuffer, EXPANSION_UNIT};
@@ -79,7 +80,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             let start_roots = Instant::now();
             let num = product_m2_as_biguint(p, q);
             let mut remaining_roots = NUM_TRIAL_ROOTS;
-            for prime in buffer.primes().take(NUM_TRIAL_ROOTS as usize) {
+            for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
                 if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
                     // Higher roots would've been found by trial divisions already
                     eprintln!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
@@ -98,7 +99,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                         result: No,
                         source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
                     });
-                } else if p + q > 100_000 || remaining_roots == 0 {
+                } else {
                     eprintln!("{}-bit number has no {} root (trying roots for {})",
                               p + q, prime, ReadableDuration(start_roots.elapsed()));
                 }
