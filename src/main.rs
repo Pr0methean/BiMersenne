@@ -115,8 +115,6 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         })
     });
     join_set.spawn(async move {
-        let buffer = get_buffer();
-        tokio::task::yield_now().await;
         let start_is_prime = Instant::now();
         let mut product_m2 = product_m2_as_biguint(p, q);
         let no_small_factors = small_factors.is_empty();
@@ -133,6 +131,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             });
         }
         let bits = product_m2.bits();
+        let buffer = get_buffer();
         info!("Calling is_prime for a {}-bit number", bits);
         let result = buffer.is_prime(&product_m2);
         let elapsed = start_is_prime.elapsed();
