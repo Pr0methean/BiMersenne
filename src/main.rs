@@ -269,7 +269,7 @@ async fn main() {
     tokio::spawn(async {
         let buffer = get_buffer();
         while buffer.len() < MAX_TRIAL_DIVISIONS {
-            if !buffer.reserve_concurrent(buffer.bound() + EXPANSION_UNIT) {
+            if !buffer.grow(buffer.bound() + EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
                 yield_now().await;
             }
         }

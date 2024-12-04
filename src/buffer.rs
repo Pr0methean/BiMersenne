@@ -12,7 +12,7 @@ use num_prime::{Primality, PrimalityUtils};
 use parking_lot::{Mutex};
 use rand::rngs::ThreadRng;
 use rand::RngCore;
-use crate::ReadableDuration;
+use crate::{ReadableDuration, MAX_TRIAL_DIVISIONS};
 
 const SPRP_TRIALS: u64 = 8;
 const RANDOM_SPRP_TRIALS: u64 = 4;
@@ -36,7 +36,7 @@ impl Iterator for ConcurrentPrimeBufferIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut next_read = self.iter.next();
         while next_read.is_none() {
-            if !self.buffer.reserve_concurrent(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT) {
+            if !self.buffer.grow(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
                 hint::spin_loop();
             }
             next_read = self.iter.next();
@@ -71,19 +71,19 @@ impl ConcurrentPrimeBuffer {
         self.len.load(Ordering::Acquire)
     }
 
-    pub(crate) fn reserve_concurrent(&self, limit: u64) -> bool {
-        let sieve_limit = (limit | 1) + 2; // make sure sieving limit is odd and larger than limit
-        let current = self.bound();
-        if sieve_limit < current {
+    pub(crate) fn grow(&self, desired_growth: u64, len_limit: u64) -> bool {
+        if len_limit < self.len() {
             return true;
         }
         let Some(mut writer) = self.writer.try_lock() else {
             return false;
         };
-        let current = self.bound();
-        if sieve_limit < current {
+        if len_limit < self.len() {
             return true;
         }
+        let current = self.bound();
+        let mut sieve_limit = ((current + desired_growth) | 1) + 2; // make sure sieving limit is odd and larger than limit
+        sieve_limit = (current + desired_growth).min(sieve_limit);
         info!("Expanding prime limit from {} to {}", current, sieve_limit);
         let sieve_start = Instant::now();
         // create sieve and filter with existing primes
