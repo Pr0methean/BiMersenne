@@ -268,8 +268,14 @@ async fn main() {
     simple_logger::init().unwrap();
     tokio::spawn(async {
         let buffer = get_buffer();
-        while buffer.len() < MAX_TRIAL_DIVISIONS {
-            if !buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
+        let mut buffer_len = buffer.len(); let mut old_buffer_len;
+        loop {
+            old_buffer_len = buffer_len;
+            buffer_len = buffer.len();
+            if buffer_len >= MAX_TRIAL_DIVISIONS {
+                return;
+            }
+            if buffer_len == old_buffer_len && !buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
                 yield_now().await;
             }
         }
