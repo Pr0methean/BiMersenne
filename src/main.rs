@@ -57,6 +57,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let trial_div_done_recv = trial_div_done_send.clone();
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
+        info!("Starting trial divisions 11 and larger for a {}-bit number", p + q);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
             0..10_000_000 => 1 << 24,
@@ -109,6 +110,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             }
         }
         if trial_factors.is_empty() {
+            info!("Starting trial roots for a {}-bit number", p + q);
             let min_root_bits = (last_prime + 2).bits() as u64;
             let start_roots = Instant::now();
             let num = product_m2_as_biguint(p, q);
@@ -137,8 +139,8 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                               p + q, prime, ReadableDuration(start_roots.elapsed()));
                 }
             }
-            info!("Trial roots failed for a {}-bit number in {} ns; calling is_prime",
-                      p + q, start_roots.elapsed().as_nanos());
+            info!("Trial roots failed for a {}-bit number in {} ns",
+                      p + q, ReadableDuration(start_roots.elapsed()));
             return None;
         }
         Some(PrimalityResult {
