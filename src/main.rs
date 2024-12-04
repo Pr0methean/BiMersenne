@@ -9,7 +9,8 @@ use std::fs::File;
 use std::io::Write;
 use std::iter;
 use std::ops::{Shl, Sub};
-use std::sync::{OnceLock};
+use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use log::info;
 use mod_exp::mod_exp;
@@ -52,6 +53,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         cofactor = Some(product_m2);
     }
     let small_factors_list = trial_factors.clone();
+    let trial_div_done = Arc::new(AtomicBool::new(false));
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
         let mut divisions_done = 0;
@@ -86,6 +88,7 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             let prime = prime.unwrap();
             let power = trial_division(p, q, prime);
             if power > 0 {
+                trial_div_done.store(true, Ordering::Release);
                 info!("Trial division found factor of {}^{} for a {}-bit number in {}",
                     prime, power, p+q, ReadableDuration(start_trials.elapsed()));
                 trial_factors.extend(iter::repeat(prime).take(power as usize));
@@ -142,12 +145,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             source: format!("Trial divisions by {:?}", trial_factors).into(),
         })
     });
-    yield_now().await;
-    let maybe_trial_div_result = join_set.try_join_next();
-    if let Some(Ok(Some(result))) = maybe_trial_div_result {
-        return result;
-    }
     join_set.spawn(async move {
+        if trial_div_done.load(Ordering::Acquire) {
+            return None;
+        }
         let start_is_prime = Instant::now();
         let product_m2 = cofactor.unwrap_or_else(||
                 product_m2_as_biguint(p, q) / &small_factors_product);
