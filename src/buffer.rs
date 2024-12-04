@@ -16,7 +16,7 @@ use crate::ReadableDuration;
 
 const SPRP_TRIALS: u64 = 8;
 const RANDOM_SPRP_TRIALS: u64 = 4;
-pub const EXPANSION_UNIT: u64 = 1 << 30;
+pub const EXPANSION_UNIT: u64 = 1 << 26;
 
 pub struct ConcurrentPrimeBuffer {
     reader: Reader<u64>,
