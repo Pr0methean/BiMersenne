@@ -36,7 +36,7 @@ impl Iterator for ConcurrentPrimeBufferIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut next_read = self.iter.next();
         while next_read.is_none() {
-            if !self.buffer.grow(self.buffer.bound.load(Ordering::Acquire) + EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
+            if !self.buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
                 hint::spin_loop();
             }
             next_read = self.iter.next();
