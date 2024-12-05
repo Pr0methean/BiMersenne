@@ -33,7 +33,7 @@ static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 #[inline]
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let mut trial_factors = Vec::new();
-    for small_factor in [5, 7] {
+    for small_factor in [5, 7, 11] {
         let power = trial_division(p, q, small_factor);
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
@@ -57,14 +57,14 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let trial_div_done_recv = trial_div_done_send.clone();
     let mut join_set = JoinSet::new();
     join_set.spawn(async move {
-        info!("Starting trial divisions 11 and larger for a {}-bit number", p + q);
+        info!("Starting trial divisions 13 and larger for a {}-bit number", p + q);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
             0..10_000_000 => 1 << 24,
             10_000_000..100_000_000 => 1 << 22,
             _ => 1 << 20,
         };
-        let mut last_prime = 7;
+        let mut last_prime = 11;
         let start_trials = Instant::now();
         let mut last_bound = SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64;
         let mut prime_iter = SMALL_PRIMES.iter().map(|x| *x as u64).skip(4)
