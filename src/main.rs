@@ -27,13 +27,19 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
 ];
 pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
+pub const SKIPPED_PRIMES_COUNT: usize = 2; // (2^p-1)*(2^q-1) - 2 can't divide 2 or 3
+
+// 5, 7, 11 and 13 are factored separately because they follow simple patterns
+// (e.g. no factor of 11 unless p and q end in 9 and 3)
+pub const SPECIALLY_HANDLED_PRIMES_COUNT: usize = 4;
+pub const SPECIALLY_HANDLED_PRIMES: [u64; SPECIALLY_HANDLED_PRIMES_COUNT] = [5, 7, 11, 13];
 
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
 #[inline]
 async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
     let mut trial_factors = Vec::new();
-    for small_factor in [5, 7, 11, 13] {
+    for small_factor in SPECIALLY_HANDLED_PRIMES {
         let power = trial_division(p, q, small_factor);
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
@@ -64,10 +70,11 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             10_000_000..100_000_000 => 1 << 22,
             _ => 1 << 20,
         };
-        let mut last_prime = 13;
+        let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
         let start_trials = Instant::now();
         let mut last_bound = SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64;
-        let mut prime_iter = SMALL_PRIMES.iter().map(|x| *x as u64).skip(6)
+        let mut prime_iter = SMALL_PRIMES.iter()
+            .map(|x| *x as u64).skip(SKIPPED_PRIMES_COUNT + SPECIALLY_HANDLED_PRIMES_COUNT)
             .chain([()].into_iter().flat_map(|_| get_buffer().primes().skip(SMALL_PRIMES.len())));
         loop {
             if last_prime > last_bound {
