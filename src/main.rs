@@ -31,8 +31,10 @@ pub const SKIPPED_PRIMES_COUNT: usize = 2; // (2^p-1)*(2^q-1) - 2 can't divide 2
 
 // 5, 7, 11 and 13 are factored separately because they follow simple patterns
 // (e.g. no factor of 11 unless p and q end in 9 and 3)
-pub const SPECIALLY_HANDLED_PRIMES_COUNT: usize = 4;
-pub const SPECIALLY_HANDLED_PRIMES: [u64; SPECIALLY_HANDLED_PRIMES_COUNT] = [5, 7, 11, 13];
+// 17, 31 and 41 don't seem to occur as factors at all (FIXME: prove this)
+// 19, 23, 29, 37, 43, 47 are a bit too common even though there's no obvious pattern
+pub const SPECIALLY_HANDLED_PRIMES_COUNT: usize = 13;
+pub const SPECIALLY_HANDLED_PRIMES: [u64; SPECIALLY_HANDLED_PRIMES_COUNT] = [5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
 
 static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
 
