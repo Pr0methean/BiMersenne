@@ -191,7 +191,7 @@ impl Display for PrimalityResult {
 fn main() {
     simple_logger::init().unwrap();
     let mut buffer = PrimeBuffer::new();
-    for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
+    for p_i in (0..(MERSENNE_EXPONENTS.len() - 5)).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
         for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
             let q = MERSENNE_EXPONENTS[q_i];
