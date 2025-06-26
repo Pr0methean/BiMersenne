@@ -86,7 +86,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = Instant::now();
     let mut remaining_roots = NUM_TRIAL_ROOTS;
-    let max_power_bits = (p + q + 1) / min_root_bits;
+    let max_power_bits = 1 + (p + q) / min_root_bits;
     for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
         if prime.bits() as u64 > max_power_bits {
             // Higher roots would've been found by trial divisions already
