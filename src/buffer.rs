@@ -1,17 +1,9 @@
-use std::hint;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
 use log::info;
-use num_bigint::BigUint;
 use num_integer::Roots;
 use num_prime::detail::SMALL_PRIMES;
-use num_prime::{Primality, PrimalityUtils};
-use parking_lot::{Mutex};
-use rand::rngs::ThreadRng;
-use rand::RngCore;
-use crate::{ReadableDuration, MAX_TRIAL_DIVISIONS};
+use crate::MAX_TRIAL_DIVISIONS;
 
 pub const EXPANSION_UNIT: u64 = 1 << 28;
 
@@ -39,7 +31,7 @@ impl PrimeBuffer {
     pub fn new() -> Self {
         PrimeBuffer(SMALL_PRIMES.iter().map(|x| *x as u64).collect())
     }
-    pub fn primes(&mut self) -> PrimeBufferIter {
+    pub fn primes(&mut self) -> PrimeBufferIter<'_> {
         PrimeBufferIter {
             index: 0,
             buffer: self

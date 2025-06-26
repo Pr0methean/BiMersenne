@@ -7,7 +7,6 @@ use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter;
 use std::ops::{Shl, Sub};
-use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
 use log::info;
 use mod_exp::mod_exp;
@@ -40,7 +39,6 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
     let small_factors_product: BigUint = trial_factors.iter().copied().map(BigUint::from).product();
-    let mut cofactor = None;
     if p + q <= small_factors_product.bits() + 128 {
         let mut product_m2 = product_m2_as_biguint(p, q);
         product_m2 /= &small_factors_product;
@@ -52,9 +50,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
                                 trial_factors, large_factors).into()
             };
         }
-        cofactor = Some(product_m2);
     }
-    let small_factors_list = trial_factors.clone();
         info!("Starting trial divisions 13 and larger for a {}-bit number", p + q);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
@@ -64,10 +60,9 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         };
         let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
         let start_trials = Instant::now();
-        let mut last_bound = SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64;
         let mut prime_iter = buffer.primes();
         loop {
-            let mut prime = prime_iter.next().unwrap();
+            let prime = prime_iter.next().unwrap();
             let power = trial_division(p, q, prime);
             if power > 0 {
                 info!("Trial division found factor of {}^{} for a {}-bit number in {}",
