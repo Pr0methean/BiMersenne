@@ -5,19 +5,15 @@ use num_prime::nt_funcs::{factorize128};
 use num_prime::{BitTest, ExactRoots, Primality};
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
-use std::fs::File;
-use std::io::Write;
 use std::iter;
 use std::ops::{Shl, Sub};
-use std::sync::{Arc, OnceLock};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{OnceLock};
 use std::time::{Duration, Instant};
 use log::info;
 use mod_exp::mod_exp;
 use num_prime::detail::SMALL_PRIMES;
-use Primality::{No, Yes};
-use tokio::task::{yield_now, JoinSet};
-use crate::buffer::{ConcurrentPrimeBuffer, EXPANSION_UNIT};
+use Primality::{No, Probable, Yes};
+use crate::buffer::{PrimeBuffer};
 
 pub const MERSENNE_EXPONENTS: [u32; 52] = [
     2, 3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607, 1279, 2203, 2281, 3217, 4253, 4423,
@@ -25,7 +21,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const MAX_TRIAL_DIVISIONS: u64 = 1 << 34;
+pub const MAX_TRIAL_DIVISIONS: usize = 1 << 34;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 pub const SKIPPED_PRIMES_COUNT: usize = 2; // (2^p-1)*(2^q-1) - 2 can't divide 2 or 3
 
@@ -36,10 +32,8 @@ pub const SKIPPED_PRIMES_COUNT: usize = 2; // (2^p-1)*(2^q-1) - 2 can't divide 2
 pub const SPECIALLY_HANDLED_PRIMES_COUNT: usize = 13;
 pub const SPECIALLY_HANDLED_PRIMES: [u64; SPECIALLY_HANDLED_PRIMES_COUNT] = [5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
 
-static BUFFER: OnceLock<ConcurrentPrimeBuffer> = OnceLock::new();
-
 #[inline]
-async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
+fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityResult {
     let mut trial_factors = Vec::new();
     for small_factor in SPECIALLY_HANDLED_PRIMES {
         let power = trial_division(p, q, small_factor);
@@ -61,10 +55,6 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         cofactor = Some(product_m2);
     }
     let small_factors_list = trial_factors.clone();
-    let trial_div_done_send = Arc::new(AtomicBool::new(false));
-    let trial_div_done_recv = trial_div_done_send.clone();
-    let mut join_set = JoinSet::new();
-    join_set.spawn(async move {
         info!("Starting trial divisions 13 and larger for a {}-bit number", p + q);
         let mut divisions_done = 0;
         let report_progress_every = match p + q {
@@ -75,38 +65,18 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
         let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
         let start_trials = Instant::now();
         let mut last_bound = SMALL_PRIMES[SMALL_PRIMES.len() - 1] as u64;
-        let mut prime_iter = SMALL_PRIMES.iter()
-            .map(|x| *x as u64).skip(SKIPPED_PRIMES_COUNT + SPECIALLY_HANDLED_PRIMES_COUNT)
-            .chain([()].into_iter().flat_map(|_| get_buffer().primes().skip(SMALL_PRIMES.len())));
+        let mut prime_iter = buffer.primes();
         loop {
-            if last_prime > last_bound {
-                let mut new_bound;
-                loop {
-                    new_bound = get_buffer().bound();
-                    if new_bound > last_bound {
-                        last_bound = new_bound;
-                        break;
-                    } else {
-                        yield_now().await;
-                    }
-                }
-            }
-            let mut prime = prime_iter.next();
-            while prime.is_none() {
-                yield_now().await;
-                prime = prime_iter.next();
-            }
-            let prime = prime.unwrap();
+            let mut prime = prime_iter.next().unwrap();
             let power = trial_division(p, q, prime);
             if power > 0 {
-                trial_div_done_send.store(true, Ordering::Release);
                 info!("Trial division found factor of {}^{} for a {}-bit number in {}",
                     prime, power, p+q, ReadableDuration(start_trials.elapsed()));
                 trial_factors.extend(iter::repeat(prime).take(power as usize));
-                return Some(PrimalityResult {
+                return PrimalityResult {
                     result: No,
                     source: format!("Trial division found factors {:?}", trial_factors).into()
-                });
+                };
             }
             last_prime = prime;
             divisions_done += 1;
@@ -139,10 +109,10 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
                 if num.is_nth_power(prime as u32) {
                     info!("Trial root found {} root of a {}-bit number in {}",
                               prime, p + q, ReadableDuration(start_trials.elapsed()));
-                    return Some(PrimalityResult {
+                    return PrimalityResult {
                         result: No,
                         source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
-                    });
+                    };
                 } else {
                     info!("{}-bit number has no {} root (trying roots for {})",
                               p + q, prime, ReadableDuration(start_roots.elapsed()));
@@ -150,51 +120,11 @@ async fn is_prime_with_trials(p: u64, q: u64) -> PrimalityResult {
             }
             info!("Trial roots failed for a {}-bit number in {} ns",
                       p + q, ReadableDuration(start_roots.elapsed()));
-            return None;
         }
-        Some(PrimalityResult {
-            result: No,
+        PrimalityResult {
+            result: Probable(0.5),
             source: format!("Trial divisions by {:?}", trial_factors).into(),
-        })
-    });
-    join_set.spawn(async move {
-        if trial_div_done_recv.load(Ordering::Acquire) {
-            return None;
         }
-        let start_is_prime = Instant::now();
-        let product_m2 = cofactor.unwrap_or_else(||
-                product_m2_as_biguint(p, q) / &small_factors_product);
-        let bits = product_m2.bits();
-        let buffer = get_buffer();
-        info!("Calling is_prime for a {}-bit number", bits);
-        let result = buffer.is_prime(&product_m2);
-        let elapsed = start_is_prime.elapsed();
-        drop(product_m2);
-        info!(
-            "is_prime for a {}-bit number took {} and returned {:?}",
-            bits,
-            ReadableDuration(elapsed),
-            result
-        );
-        if small_factors_product == one() {
-            Some(PrimalityResult {
-                result,
-                source: "is_prime".into(),
-            })
-        } else {
-            Some(PrimalityResult {
-                result: No,
-                source: format!("Trial factoring found {:?} and is_prime gave {:?} for cofactor",
-                small_factors_list, result).into()
-            })
-        }
-    });
-    while let Some(result) = join_set.join_next().await {
-        if let Some(result) = result.unwrap() {
-            return result;
-        }
-    }
-    panic!("Both trial divisions and is_prime failed for a {}-bit number", p + q);
 }
 
 #[inline]
@@ -261,10 +191,6 @@ fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
     product_m2
 }
 
-fn get_buffer() -> &'static ConcurrentPrimeBuffer {
-    BUFFER.get_or_init(ConcurrentPrimeBuffer::new)
-}
-
 struct PrimalityResult {
     result: Primality,
     source: Cow<'static, str>,
@@ -276,60 +202,34 @@ impl Display for PrimalityResult {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+fn main() {
     simple_logger::init().unwrap();
-    tokio::spawn(async {
-        let buffer = get_buffer();
-        while buffer.len() < MAX_TRIAL_DIVISIONS {
-            if !buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
-                yield_now().await;
-            }
-        }
-    }); // Start building buffer ahead of time
-    let mut output_tasks = Vec::new();
-    let mut is_prime_calls = 0;
-    let mut factorize128_calls = 0;
+    let mut buffer = PrimeBuffer::new();
     for p_i in (0..MERSENNE_EXPONENTS.len()).rev() {
         let p = MERSENNE_EXPONENTS[p_i];
         for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
             let q = MERSENNE_EXPONENTS[q_i];
-            let num_filename = std::path::PathBuf::from(format!("result_{}_{}.txt", p, q));
-            if num_filename.exists() {
-                continue;
-            }
             if p + q <= 128 {
-                factorize128_calls += 1;
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
                 let productm2 = m_p as u128 * m_q - 2;
-                output_tasks.push(tokio::spawn(async move {
-                    let start_factorize128 = Instant::now();
-                    let factors = factorize128(productm2);
-                    info!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
-                    let result = PrimalityResult {
-                        result: if factors.values().sum::<usize>() == 1 {
-                            Yes
-                        } else {
-                            No
-                        },
-                        source: format!("factorize128 gives factors: {:?}", factors).into(),
-                    };
-                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
-                }));
+                let start_factorize128 = Instant::now();
+                let factors = factorize128(productm2);
+                info!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
+                let result = PrimalityResult {
+                    result: if factors.values().sum::<usize>() == 1 {
+                        Yes
+                    } else {
+                        No
+                    },
+                    source: format!("factorize128 gives factors: {:?}", factors).into(),
+                };
+                println!("{},{}: {}", p, q, result);
             } else {
-                is_prime_calls += 1;
-                output_tasks.push(tokio::spawn(async move {
-                    let result = is_prime_with_trials(p as u64, q as u64).await;
-                    File::create(num_filename).unwrap().write_all(result.to_string().as_bytes()).unwrap()
-                }));
+                let result = is_prime_with_trials(p as u64, q as u64, &mut buffer);
+                println!("{},{}: {}", p, q, result);
             }
         }
-    }
-    info!("All computation tasks launched: {} using factorize128, {} using is_prime or trial divisions",
-              factorize128_calls, is_prime_calls);
-    for task in output_tasks.into_iter() {
-        task.await.unwrap();
     }
 }
 

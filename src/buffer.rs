@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use bitvec::bitvec;
 use bitvec::order::Msb0;
-use concurrent_list::{Iter, Reader, Writer};
 use log::info;
 use num_bigint::BigUint;
 use num_integer::Roots;
@@ -14,81 +13,58 @@ use rand::rngs::ThreadRng;
 use rand::RngCore;
 use crate::{ReadableDuration, MAX_TRIAL_DIVISIONS};
 
-const SPRP_TRIALS: u64 = 8;
-const RANDOM_SPRP_TRIALS: u64 = 4;
 pub const EXPANSION_UNIT: u64 = 1 << 28;
 
-pub struct ConcurrentPrimeBuffer {
-    reader: Reader<u64>,
-    writer: Mutex<Writer<u64>>,
-    bound: AtomicU64,
-    len: AtomicU64
+pub struct PrimeBuffer(Vec<u64>);
+
+pub struct PrimeBufferIter<'a> {
+    index: usize,
+    buffer: &'a mut PrimeBuffer
 }
 
-pub struct ConcurrentPrimeBufferIter<'a> {
-    iter: Iter<'a, u64>,
-    buffer: &'a ConcurrentPrimeBuffer
-}
-
-impl Iterator for ConcurrentPrimeBufferIter<'_> {
+impl Iterator for PrimeBufferIter<'_> {
     type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut next_read = self.iter.next();
+        let mut next_read = self.buffer.0.get(self.index);
         while next_read.is_none() {
-            if !self.buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS) {
-                hint::spin_loop();
-            }
-            next_read = self.iter.next();
+            self.buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS);
+            next_read = self.buffer.0.get(self.index);
         }
-        next_read.map(|x| *x)
+        next_read.copied()
     }
 }
 
-impl ConcurrentPrimeBuffer {
+impl PrimeBuffer {
     pub fn new() -> Self {
-        let (mut writer, reader) = concurrent_list::new();
-        SMALL_PRIMES.iter().for_each(|prime| writer.push(*prime as u64));
-        ConcurrentPrimeBuffer {
-            reader,
-            writer: Mutex::new(writer),
-            len: AtomicU64::new(SMALL_PRIMES.len() as u64),
-            bound: AtomicU64::new(*SMALL_PRIMES.last().unwrap() as u64)
-        }
+        PrimeBuffer(SMALL_PRIMES.iter().map(|x| *x as u64).collect())
     }
-    pub fn primes(&self) -> ConcurrentPrimeBufferIter {
-        ConcurrentPrimeBufferIter {
-            iter: self.reader.iter(),
+    pub fn primes(&mut self) -> PrimeBufferIter {
+        PrimeBufferIter {
+            index: 0,
             buffer: self
         }
     }
 
     pub fn bound(&self) -> u64 {
-        self.bound.load(Ordering::Acquire)
+        *self.0.last().unwrap()
     }
 
-    pub fn len(&self) -> u64 {
-        self.len.load(Ordering::Acquire)
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
-    pub(crate) fn grow(&self, desired_growth: u64, len_limit: u64) -> bool {
+    pub(crate) fn grow(&mut self, desired_growth: u64, len_limit: usize) {
         if len_limit < self.len() {
-            return true;
-        }
-        let Some(mut writer) = self.writer.try_lock() else {
-            return false;
-        };
-        if len_limit < self.len() {
-            return true;
+            return;
         }
         let current = self.bound();
         let mut sieve_limit = ((current + desired_growth) | 1) + 2; // make sure sieving limit is odd and larger than limit
         sieve_limit = (current + desired_growth).min(sieve_limit);
         info!("Expanding prime limit from {} to {}", current, sieve_limit);
-        let sieve_start = Instant::now();
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
-        for p in self.reader.iter().skip(1) {
+        for p in self.0.iter().skip(1) {
             let p = *p;
             // skip pre-filtered 2
             let start = if p * p < current {
@@ -116,73 +92,10 @@ impl ConcurrentPrimeBuffer {
         let mut size_increase = 0;
         let mut new_bound = 0;
         sieve.iter_zeros().map(|x| (x as u64) * 2 + current).for_each(|x| {
-            writer.push(x);
+            self.0.push(x);
             size_increase += 1;
             new_bound = x;
         });
-        self.len.fetch_add(size_increase, Ordering::AcqRel);
-        self.bound.store(new_bound, Ordering::Release);
-        info!("Expanding prime limit from {} to {} took {}", current, sieve_limit, ReadableDuration(sieve_start.elapsed()));
-        true
-    }
-
-    #[inline]
-    pub fn is_prime(
-        &self,
-        target: &BigUint,
-    ) -> Primality
-    {
-        let mut probability = 1.;
-
-        // miller-rabin test
-        let mr_start = Instant::now();
-        let mut witness_list: Vec<u64> = Vec::with_capacity((SPRP_TRIALS + RANDOM_SPRP_TRIALS) as usize);
-        witness_list.extend(self.primes().take(SPRP_TRIALS as usize));
-        probability *= 1. - 0.25f32.powi(SPRP_TRIALS as i32);
-        for _ in 0..RANDOM_SPRP_TRIALS {
-            // we have ensured target is larger than 2^64
-            let mut w: u64 = ThreadRng::default().next_u64();
-            while witness_list.iter().any(|x| x == &w) {
-                w = ThreadRng::default().next_u64();
-            }
-            witness_list.push(w);
-        }
-        probability *= 1. - 0.25f32.powi(RANDOM_SPRP_TRIALS as i32);
-        if !witness_list
-            .into_iter()
-            .all(|x| {
-                let mr_start = Instant::now();
-                let result = target.is_sprp(BigUint::from(x));
-                info!("Miller-Rabin test for a {}-bit number with witness {} took {} and returned {}",
-                          target.bits(), x, ReadableDuration(mr_start.elapsed()), result);
-                result
-            })
-        {
-            info!("Miller-Rabin test found a {}-bit number composite after {}", target.bits(),
-                      ReadableDuration(mr_start.elapsed()));
-            return Primality::No;
-        }
-        info!("Miller-Rabin test failed to prove a {}-bit number composite after {}", target.bits(),
-                  ReadableDuration(mr_start.elapsed()));
-        // lucas probable prime test
-        probability *= 1. - 4f32 / 15f32;
-        let lucas_start = Instant::now();
-        if !target.is_slprp(None, None) {
-            info!("Strong Lucas test found a {}-bit number composite after {}", target.bits(),
-                      ReadableDuration(lucas_start.elapsed()));
-            return Primality::No;
-        }
-        info!("Strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
-                  ReadableDuration(lucas_start.elapsed()));
-        probability *= 1. - 4f32 / 15f32;
-        let lucas_start = Instant::now();
-        if !target.is_eslprp(None) {
-            info!("Extra-strong Lucas test found a {}-bit number composite after {}", target.bits(),
-                      ReadableDuration(lucas_start.elapsed()));
-            return Primality::No;
-        }
-        info!("Extra-strong Lucas test failed to prove a {}-bit number composite after {}", target.bits(),
-                  ReadableDuration(lucas_start.elapsed()));
-        Primality::Probable(probability)
+        info!("Done expanding prime limit from {} to {}", current, sieve_limit);
     }
 }
