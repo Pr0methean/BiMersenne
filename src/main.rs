@@ -72,6 +72,11 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
                 source: format!("Trial division found factors {:?}", trial_factors).into()
             };
         }
+        if let Some(square) = (prime as u128).checked_mul(prime as u128) && square.bits() > (p + q - 1)/2 {
+            info!("Stopping trial divisions because we've reached the square root of a {}-bit number",
+                    p + q);
+            break;
+        }
         last_prime = prime;
         divisions_done += 1;
         if divisions_done % report_progress_every == 0 {
