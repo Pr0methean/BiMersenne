@@ -56,8 +56,7 @@ impl PrimeBuffer {
         info!("Expanding prime limit from {} to {}", current, sieve_limit);
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
-        for p in self.0.iter().skip(1) {
-            let p = *p;
+        for p in self.0.iter().copied().skip(1) {
             // skip pre-filtered 2
             let start = if p * p < current {
                 p * ((current / p) | 1) // start from an odd factor
