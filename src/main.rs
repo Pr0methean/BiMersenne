@@ -61,6 +61,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
     let start_trials = Instant::now();
     let mut prime_iter = buffer.primes().skip(SPECIALLY_HANDLED_PRIMES_COUNT + 2);
+    let max_bits_in_prime = (p + q + 1) / 2;
     loop {
         let prime = prime_iter.next().unwrap();
         let power = trial_division(p, q, prime);
@@ -73,7 +74,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
                 source: format!("Trial division found factors {:?}", trial_factors).into()
             };
         }
-        if let Some(square) = (prime as u128).checked_mul(prime as u128) && square.bits() as u64 > (p + q - 1)/2 {
+        if let Some(square) = (prime as u128).checked_mul(prime as u128) && square.bits() as u64 > max_bits_in_prime {
             info!("Stopping trial divisions because we've reached the square root of a {}-bit number",
                     p + q);
             break;
