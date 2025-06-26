@@ -2,7 +2,7 @@ mod buffer;
 
 use num_bigint::BigUint;
 use num_prime::nt_funcs::{factorize128};
-use num_prime::{BitTest, ExactRoots, Primality};
+use num_prime::{BitTest, Primality};
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter;
@@ -83,24 +83,26 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         }
     }
     info!("Starting trial roots for a {}-bit number", p + q);
-    let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = Instant::now();
     for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
         let approx_root = cofactor.nth_root(prime as u32);
-        if cofactor % approx_root == 0 && cofactor == approx_root.pow(prime) {
+        if &cofactor % &approx_root == BigUint::ZERO && cofactor == approx_root.pow(prime as u32) {
             info!("Trial root found {} as {} root of a {}-bit number in {}",
                       approx_root, prime, p + q, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
                 result: No,
-                source: format!("Trial nth root: {}^{} and factors: {:?}", root, prime, trial_factors).into(),
+                source: format!("Trial nth root: {}^{} and factors: {:?}", approx_root, prime, trial_factors).into(),
             };
-        } else if approx_root >= last_prime {
-            info!("Ruled out remaining roots for a {}-bit number because {}^{} is too large",
-                    p + q, approx_root, prime);
-            break;
         } else {
-            info!("{}-bit number has no {} root (trying roots for {})",
+            let approx_root_u64_result = (&approx_root).try_into();
+            if approx_root_u64_result.is_ok_and(|approx_root_u64: u64| approx_root_u64 <= last_prime) {
+                info!("{}-bit number has no {} root (trying roots for {})",
                       p + q, prime, ReadableDuration(start_roots.elapsed()));
+            } else {
+                info!("Ruled out remaining roots for a {}-bit number because {}^{} is too large",
+                        p + q, approx_root, prime);
+                break;
+            }
         }
     }
     info!("Trial roots failed for a {}-bit number in {} ns",
