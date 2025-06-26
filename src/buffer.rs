@@ -47,6 +47,16 @@ impl PrimeBuffer {
         self.0.len()
     }
 
+    pub fn contains_within<T: TryInto<u64>>(&mut self, prime: T, size_limit: usize) -> bool {
+        let Ok(prime) = prime.try_into() else {
+            return false;
+        };
+        while self.bound() < prime && self.len() < size_limit {
+            self.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS);
+        }
+        self.0[0..size_limit].binary_search(&prime).is_ok()
+    }
+
     pub(crate) fn grow(&mut self, desired_growth: u64, len_limit: usize) {
         if len_limit < self.len() {
             info!("No need to grow the prime buffer");

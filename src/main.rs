@@ -2,7 +2,7 @@ mod buffer;
 
 use num_bigint::BigUint;
 use num_prime::nt_funcs::{factorize128};
-use num_prime::{BitTest, Primality};
+use num_prime::{Primality};
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter;
@@ -86,7 +86,9 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     let start_roots = Instant::now();
     for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
         let approx_root = cofactor.nth_root(prime as u32);
-        if &cofactor % &approx_root == BigUint::ZERO && cofactor == approx_root.pow(prime as u32) {
+        if &cofactor % &approx_root == BigUint::ZERO
+                && !buffer.contains_within(&approx_root, MAX_TRIAL_DIVISIONS)
+                && cofactor == approx_root.pow(prime as u32) {
             info!("Trial root found {} as {} root of a {}-bit number in {}",
                       approx_root, prime, p + q, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
