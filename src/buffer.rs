@@ -23,6 +23,7 @@ impl Iterator for PrimeBufferIter<'_> {
             self.buffer.grow(EXPANSION_UNIT, MAX_TRIAL_DIVISIONS);
             next_read = self.buffer.0.get(self.index);
         }
+        self.index += 1;
         next_read.copied()
     }
 }
@@ -48,11 +49,13 @@ impl PrimeBuffer {
 
     pub(crate) fn grow(&mut self, desired_growth: u64, len_limit: usize) {
         if len_limit < self.len() {
+            info!("No need to grow the prime buffer");
             return;
         }
         let current = self.bound();
         let mut sieve_limit = ((current + desired_growth) | 1) + 2; // make sure sieving limit is odd and larger than limit
         sieve_limit = (current + desired_growth).min(sieve_limit);
+        self.0.reserve(len_limit - self.len());
         info!("Expanding prime limit from {} to {}", current, sieve_limit);
         // create sieve and filter with existing primes
         let mut sieve = bitvec![usize, Msb0; 0; ((sieve_limit - current) / 2) as usize];
@@ -88,5 +91,9 @@ impl PrimeBuffer {
             new_bound = x;
         });
         info!("Done expanding prime limit from {} to {}", current, sieve_limit);
+        #[cfg(debug_assertions)]
+        if sieve_limit >= 563743 {
+            debug_assert!(self.0.contains(&563743));
+        }
     }
 }

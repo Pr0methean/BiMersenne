@@ -20,7 +20,7 @@ pub const MERSENNE_EXPONENTS: [u32; 52] = [
     1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457,
     32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933, 136279841,
 ];
-pub const MAX_TRIAL_DIVISIONS: usize = 1 << 3;
+pub const MAX_TRIAL_DIVISIONS: usize = 1 << 31;
 pub const NUM_TRIAL_ROOTS: u64 = 1 << 8;
 pub const SKIPPED_PRIMES_COUNT: usize = 2; // (2^p-1)*(2^q-1) - 2 can't divide 2 or 3
 
@@ -39,8 +39,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
     let small_factors_product: BigUint = trial_factors.iter().copied().map(BigUint::from).product();
-    let product_m2 = product_m2_as_biguint(p, q);
-    let cofactor = product_m2 / &small_factors_product;
+    let cofactor = product_m2_as_biguint(p, q) / &small_factors_product;
     if p + q <= small_factors_product.bits() + 128 {
         if let Ok(cofactor) = u128::try_from(&cofactor) {
             let large_factors = factorize128(cofactor);
@@ -51,70 +50,68 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
             };
         }
     }
-        info!("Starting larger trial divisions for a {}-bit number", p + q);
-        let mut divisions_done = 0;
-        let report_progress_every = match p + q {
-            0..10_000_000 => 1 << 24,
-            10_000_000..100_000_000 => 1 << 22,
-            _ => 1 << 20,
-        };
-        let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
-        let start_trials = Instant::now();
-        let mut prime_iter = buffer.primes();
-        loop {
-            let prime = prime_iter.next().unwrap();
-            let power = trial_division(p, q, prime);
-            if power > 0 {
-                info!("Trial division found factor of {}^{} for a {}-bit number in {}",
-                    prime, power, p+q, ReadableDuration(start_trials.elapsed()));
-                trial_factors.extend(iter::repeat(prime).take(power as usize));
-                return PrimalityResult {
-                    result: No,
-                    source: format!("Trial division found factors {:?}", trial_factors).into()
-                };
-            }
-            last_prime = prime;
-            divisions_done += 1;
-            if divisions_done % report_progress_every == 0 {
-                info!("{} trial divisions done for a {}-bit number in {}",
-                          divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
-            }
-            if divisions_done >= MAX_TRIAL_DIVISIONS {
-                break;
-            }
+    info!("Starting larger trial divisions for a {}-bit number", p + q);
+    let mut divisions_done = 0;
+    let report_progress_every = match p + q {
+        0..10_000_000 => 1 << 24,
+        10_000_000..100_000_000 => 1 << 22,
+        _ => 1 << 20,
+    };
+    let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
+    let start_trials = Instant::now();
+    let mut prime_iter = buffer.primes().skip(SPECIALLY_HANDLED_PRIMES_COUNT + 2);
+    loop {
+        let prime = prime_iter.next().unwrap();
+        let power = trial_division(p, q, prime);
+        if power > 0 {
+            info!("Trial division found factor of {}^{} for a {}-bit number in {}",
+                prime, power, p+q, ReadableDuration(start_trials.elapsed()));
+            trial_factors.extend(iter::repeat(prime).take(power as usize));
+            return PrimalityResult {
+                result: No,
+                source: format!("Trial division found factors {:?}", trial_factors).into()
+            };
         }
-        if trial_factors.is_empty() {
-            info!("Starting trial roots for a {}-bit number", p + q);
-            let min_root_bits = (last_prime + 2).bits() as u64;
-            let start_roots = Instant::now();
-            let mut remaining_roots = NUM_TRIAL_ROOTS;
-            for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
-                if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
-                    // Higher roots would've been found by trial divisions already
-                    info!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
-                              prime, p + q, remaining_roots);
-                    break;
-                }
-                remaining_roots -= 1;
-                if cofactor.is_nth_power(prime as u32) {
-                    info!("Trial root found {} root of a {}-bit number in {}",
-                              prime, p + q, ReadableDuration(start_trials.elapsed()));
-                    return PrimalityResult {
-                        result: No,
-                        source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
-                    };
-                } else {
-                    info!("{}-bit number has no {} root (trying roots for {})",
-                              p + q, prime, ReadableDuration(start_roots.elapsed()));
-                }
-            }
-            info!("Trial roots failed for a {}-bit number in {} ns",
-                      p + q, ReadableDuration(start_roots.elapsed()));
+        last_prime = prime;
+        divisions_done += 1;
+        if divisions_done % report_progress_every == 0 {
+            info!("{} trial divisions done for a {}-bit number in {}",
+                      divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
         }
-        PrimalityResult {
-            result: Probable(0.5),
-            source: format!("Trial divisions by {:?}", trial_factors).into(),
+        if divisions_done >= MAX_TRIAL_DIVISIONS {
+            break;
         }
+    }
+    info!("Starting trial roots for a {}-bit number", p + q);
+    let min_root_bits = (last_prime + 2).bits() as u64;
+    let start_roots = Instant::now();
+    let mut remaining_roots = NUM_TRIAL_ROOTS;
+    for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
+        if (prime.bits() as u64 - 1) * (min_root_bits - 1) > p + q {
+            // Higher roots would've been found by trial divisions already
+            info!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
+                      prime, p + q, remaining_roots);
+            break;
+        }
+        remaining_roots -= 1;
+        if cofactor.is_nth_power(prime as u32) {
+            info!("Trial root found {} root of a {}-bit number in {}",
+                      prime, p + q, ReadableDuration(start_trials.elapsed()));
+            return PrimalityResult {
+                result: No,
+                source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
+            };
+        } else {
+            info!("{}-bit number has no {} root (trying roots for {})",
+                      p + q, prime, ReadableDuration(start_roots.elapsed()));
+        }
+    }
+    info!("Trial roots failed for a {}-bit number in {} ns",
+              p + q, ReadableDuration(start_roots.elapsed()));
+    PrimalityResult {
+        result: Probable(0.5),
+        source: format!("Trial divisions by {:?}", trial_factors).into(),
+    }
 }
 
 #[inline]
