@@ -85,23 +85,19 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     info!("Starting trial roots for a {}-bit number", p + q);
     let min_root_bits = (last_prime + 2).bits() as u64;
     let start_roots = Instant::now();
-    let mut remaining_roots = NUM_TRIAL_ROOTS;
-    let max_power_bits = 1 + (p + q) / min_root_bits;
     for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
-        if prime.bits() as u64 > max_power_bits {
-            // Higher roots would've been found by trial divisions already
-            info!("Ruling out {} and higher roots for a {}-bit number because divisions would have found them ({} trial roots skipped)",
-                      prime, p + q, remaining_roots);
-            break;
-        }
-        remaining_roots -= 1;
-        if let Some(root) = cofactor.nth_root_exact(prime as u32) {
+        let approx_root = cofactor.nth_root(prime as u32);
+        if cofactor % approx_root == 0 && cofactor == approx_root.pow(prime) {
             info!("Trial root found {} as {} root of a {}-bit number in {}",
-                      root, prime, p + q, ReadableDuration(start_trials.elapsed()));
+                      approx_root, prime, p + q, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
                 result: No,
                 source: format!("Trial nth root: {}^{} and factors: {:?}", root, prime, trial_factors).into(),
             };
+        } else if approx_root >= last_prime {
+            info!("Ruled out remaining roots for a {}-bit number because {}^{} is too large",
+                    p + q, approx_root, prime);
+            break;
         } else {
             info!("{}-bit number has no {} root (trying roots for {})",
                       p + q, prime, ReadableDuration(start_roots.elapsed()));
