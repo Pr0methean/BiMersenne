@@ -122,43 +122,42 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let mut power = 0;
     let prime = prime as u128;
     let mut modulus = prime;
-    loop {
-        if modulus > 1<<64 {
-            let prime = BigUint::from(prime);
-            let two = two();
-            let mut modulus = BigUint::from(modulus);
-            let mut remainder;
-            loop {
-                remainder = two.modpow(&BigUint::from(p + q), &modulus)
-                    + (&modulus - two.modpow(&BigUint::from(p), &modulus))
-                    + (&modulus - two.modpow(&BigUint::from(q), &modulus))
-                    - one();
-                remainder %= &modulus;
-                if remainder == BigUint::ZERO {
-                    modulus *= &prime;
-                    power += 1;
-                } else {
-                    return power;
-                }
-            }
+    while modulus < 1<<64 {
+        let mut remainder = mod_exp(2u128, (p + q) as u128, modulus)
+            + (modulus - mod_exp(2u128, p as u128, modulus))
+            + (modulus - mod_exp(2u128, q as u128, modulus))
+            - 1;
+        remainder %= modulus;
+        if remainder == 0 {
+            modulus *= prime;
+            power += 1;
         } else {
-            let mut remainder = mod_exp(2u128, (p + q) as u128, modulus)
-                + (modulus - mod_exp(2u128, p as u128, modulus))
-                + (modulus - mod_exp(2u128, q as u128, modulus))
-                - 1;
-            remainder %= modulus;
-            if remainder == 0 {
-                modulus *= prime;
-                power += 1;
-            } else {
-                return power;
-            }
+            return power;
+        }
+    }
+    let prime = BigUint::from(prime);
+    let one = one();
+    let two = BigUint::from(2u8);
+    let mut modulus = BigUint::from(modulus);
+    let mut remainder;
+    loop {
+        remainder = two.modpow(&BigUint::from(p + q), &modulus)
+            + (&modulus - two.modpow(&BigUint::from(p), &modulus))
+            + (&modulus - two.modpow(&BigUint::from(q), &modulus))
+            - one;
+        remainder %= &modulus;
+        if remainder == BigUint::ZERO {
+            modulus *= &prime;
+            power += 1;
+        } else {
+            return power;
         }
     }
 }
 
-fn two() -> BigUint {
-    BigUint::from(2u8)
+#[inline]
+fn one() -> BigUint {
+    BigUint::from(1u8)
 }
 
 fn product_m2_as_biguint(p: u64, q: u64) -> BigUint {
@@ -218,10 +217,6 @@ fn main() {
             }
         }
     }
-}
-
-fn one() -> BigUint {
-    BigUint::from(1u8)
 }
 
 struct ReadableDuration(Duration);
