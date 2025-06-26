@@ -54,8 +54,8 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     let mut divisions_done = 0;
     let report_progress_every = match p + q {
         0..10_000_000 => 1 << 24,
-        10_000_000..100_000_000 => 1 << 22,
-        _ => 1 << 20,
+        10_000_000..100_000_000 => 1 << 23,
+        _ => 1 << 22,
     };
     let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
     let start_trials = Instant::now();
