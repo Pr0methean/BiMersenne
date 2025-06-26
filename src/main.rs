@@ -95,12 +95,12 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
             break;
         }
         remaining_roots -= 1;
-        if cofactor.is_nth_power(prime as u32) {
-            info!("Trial root found {} root of a {}-bit number in {}",
-                      prime, p + q, ReadableDuration(start_trials.elapsed()));
+        if let Some(root) = cofactor.nth_root_exact(prime as u32) {
+            info!("Trial root found {} as {} root of a {}-bit number in {}",
+                      root, prime, p + q, ReadableDuration(start_trials.elapsed()));
             return PrimalityResult {
                 result: No,
-                source: format!("Trial nth root: {} and factors: {:?}", prime, trial_factors).into(),
+                source: format!("Trial nth root: {}^{} and factors: {:?}", root, prime, trial_factors).into(),
             };
         } else {
             info!("{}-bit number has no {} root (trying roots for {})",
