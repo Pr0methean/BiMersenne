@@ -136,7 +136,6 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
         }
     }
     let prime = BigUint::from(prime);
-    let one = one();
     let two = BigUint::from(2u8);
     let p_plus_q = BigUint::from(p + q);
     let p = BigUint::from(p);
@@ -146,7 +145,7 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
         let remainder = (two.modpow(&p_plus_q, &modulus)
             + (&modulus - two.modpow(&p, &modulus))
             + (&modulus - two.modpow(&q, &modulus))
-            - &one) % &modulus;
+            - 1u32) % &modulus;
         if remainder == BigUint::ZERO {
             modulus *= &prime;
             power += 1;
