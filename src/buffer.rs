@@ -5,7 +5,7 @@ use num_integer::Roots;
 use num_prime::detail::SMALL_PRIMES;
 use crate::MAX_TRIAL_DIVISIONS;
 
-pub const EXPANSION_UNIT: u64 = 1 << 28;
+pub const EXPANSION_UNIT: u64 = 1 << 30;
 
 pub struct PrimeBuffer(Vec<u64>);
 
