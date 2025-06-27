@@ -133,10 +133,11 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let prime = prime as u128;
     let mut modulus = prime;
     while modulus < 1<<64 {
-        let remainder_p1 = (2 * modulus
-            + mod_exp(2u128, (p + q) as u128, modulus)
-            - mod_exp(2u128, p as u128, modulus)
-            - mod_exp(2u128, q as u128, modulus))
+        let mp_mod = mod_exp(2u128, p as u128, modulus);
+        let mq_mod = mod_exp(2u128, q as u128, modulus);
+        let remainder_p1 = (modulus
+            + mp_mod * mq_mod
+            - mp_mod - mq_mod)
             % modulus;
         if remainder_p1 == 1 {
             modulus *= prime;
@@ -148,15 +149,15 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let prime = BigUint::from(prime);
     let one = BigUint::from(1u8);
     let two = BigUint::from(2u8);
-    let p_plus_q = BigUint::from(p + q);
     let p = BigUint::from(p);
     let q = BigUint::from(q);
     let mut modulus = BigUint::from(modulus);
     loop {
-        let remainder_p1 = ((&modulus << 1)
-            + two.modpow(&p_plus_q, &modulus)
-            - two.modpow(&p, &modulus)
-            - two.modpow(&q, &modulus))
+        let mp_mod = two.modpow(&p, &modulus);
+        let mq_mod = two.modpow(&q, &modulus);
+        let remainder_p1 = (&modulus
+            + (&mp_mod * &mq_mod)
+            - &mp_mod - &mq_mod)
             % &modulus;
         if remainder_p1 == one {
             modulus *= &prime;
