@@ -58,7 +58,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         10_000_000..100_000_000 => 1 << 23,
         _ => 1 << 22,
     };
-    let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
+    // let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
     let start_trials = Instant::now();
     let mut prime_iter = buffer.primes().skip(SPECIALLY_HANDLED_PRIMES_COUNT + 2);
     let max_bits_in_prime = (p + q + 1) / 2;
@@ -79,7 +79,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
                     p + q);
             break;
         }
-        last_prime = prime;
+        // last_prime = prime;
         divisions_done += 1;
         if divisions_done % report_progress_every == 0 {
             info!("{} trial divisions done for a {}-bit number in {}",
@@ -204,15 +204,14 @@ impl Display for PrimalityResult {
 fn main() {
     simple_logger::init().unwrap();
     let mut buffer = PrimeBuffer::new();
-    for p_i in (3..(MERSENNE_EXPONENTS.len() - 5)) {
+    for p_i in 3..(MERSENNE_EXPONENTS.len() - 5) {
         let p = MERSENNE_EXPONENTS[p_i];
-        let min_q_i = if p_i == 3 {
-          21
+        let qs = if p_i == 3 {
+          &[9689, 32582657, 74207281][..]
         } else {
-          p_i
+          &MERSENNE_EXPONENTS[((p_i + 1).max(14))..]
         };
-        for q_i in (min_q_i..MERSENNE_EXPONENTS.len()) {
-            let q = MERSENNE_EXPONENTS[q_i];
+        for q in qs.iter().copied() {
             if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
                 let m_q = (1u128 << q) - 1;
