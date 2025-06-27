@@ -133,12 +133,12 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let prime = prime as u128;
     let mut modulus = prime;
     while modulus < 1<<64 {
-        let mut remainder = mod_exp(2u128, (p + q) as u128, modulus)
-            + (modulus - mod_exp(2u128, p as u128, modulus))
-            + (modulus - mod_exp(2u128, q as u128, modulus))
-            - 1;
-        remainder %= modulus;
-        if remainder == 0 {
+        let remainder_p1 = (2 * modulus
+            + mod_exp(2u128, (p + q) as u128, modulus)
+            - mod_exp(2u128, p as u128, modulus)
+            - mod_exp(2u128, q as u128, modulus))
+            % modulus;
+        if remainder_p1 == 1 {
             modulus *= prime;
             power += 1;
         } else {
@@ -146,17 +146,19 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
         }
     }
     let prime = BigUint::from(prime);
+    let one = BigUint::from(1u8);
     let two = BigUint::from(2u8);
     let p_plus_q = BigUint::from(p + q);
     let p = BigUint::from(p);
     let q = BigUint::from(q);
     let mut modulus = BigUint::from(modulus);
     loop {
-        let remainder = (two.modpow(&p_plus_q, &modulus)
-            + (&modulus - two.modpow(&p, &modulus))
-            + (&modulus - two.modpow(&q, &modulus))
-            - 1u32) % &modulus;
-        if remainder == BigUint::ZERO {
+        let remainder_p1 = ((&modulus << 1)
+            + two.modpow(&p_plus_q, &modulus)
+            - two.modpow(&p, &modulus)
+            - two.modpow(&q, &modulus))
+            % &modulus;
+        if remainder_p1 == one {
             modulus *= &prime;
             power += 1;
         } else {
@@ -203,7 +205,12 @@ fn main() {
     let mut buffer = PrimeBuffer::new();
     for p_i in (3..(MERSENNE_EXPONENTS.len() - 5)) {
         let p = MERSENNE_EXPONENTS[p_i];
-        for q_i in (p_i..MERSENNE_EXPONENTS.len()) {
+        let min_q_i = if p_i == 3 {
+          21
+        } else {
+          p_i
+        };
+        for q_i in (min_q_i..MERSENNE_EXPONENTS.len()) {
             let q = MERSENNE_EXPONENTS[q_i];
             if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
