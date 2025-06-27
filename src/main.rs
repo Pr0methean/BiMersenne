@@ -89,6 +89,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
             break;
         }
     }
+    /*
     info!("Starting trial roots for a {}-bit number", p + q);
     let start_roots = Instant::now();
     for prime in SMALL_PRIMES.iter().copied().take(NUM_TRIAL_ROOTS as usize) {
@@ -116,6 +117,7 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
     }
     info!("Trial roots failed for a {}-bit number in {} ns",
               p + q, ReadableDuration(start_roots.elapsed()));
+     */
     PrimalityResult {
         result: Probable(0.5),
         source: format!("Trial divisions by {:?}", trial_factors).into(),
@@ -199,9 +201,9 @@ impl Display for PrimalityResult {
 fn main() {
     simple_logger::init().unwrap();
     let mut buffer = PrimeBuffer::new();
-    for p_i in (0..(MERSENNE_EXPONENTS.len() - 5)).rev() {
+    for p_i in (3..(MERSENNE_EXPONENTS.len() - 5)) {
         let p = MERSENNE_EXPONENTS[p_i];
-        for q_i in (p_i..MERSENNE_EXPONENTS.len()).rev() {
+        for q_i in (p_i..MERSENNE_EXPONENTS.len()) {
             let q = MERSENNE_EXPONENTS[q_i];
             if p + q <= 128 {
                 let m_p = (1u64 << p) - 1;
