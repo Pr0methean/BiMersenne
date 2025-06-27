@@ -33,15 +33,15 @@ pub const SPECIALLY_HANDLED_PRIMES_COUNT: usize = 13;
 pub const SPECIALLY_HANDLED_PRIMES: [u64; SPECIALLY_HANDLED_PRIMES_COUNT] = [5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
 
 #[inline]
-fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityResult {
+fn is_prime_with_trials(p: u64, buffer: &mut PrimeBuffer) -> PrimalityResult {
     let mut trial_factors = Vec::new();
     for small_factor in SPECIALLY_HANDLED_PRIMES {
-        let power = trial_division(p, q, small_factor);
+        let power = trial_division(p, small_factor);
         trial_factors.extend(iter::repeat(small_factor).take(power as usize));
     }
     let small_factors_product: BigUint = trial_factors.iter().copied().map(BigUint::from).product();
-    let cofactor = product_m2_as_biguint(p, q) / &small_factors_product;
-    if p + q <= small_factors_product.bits() + 128 {
+    let cofactor = product_m2_as_biguint(p, p) / &small_factors_product;
+    if 2 * p <= small_factors_product.bits() + 128 {
         if let Ok(cofactor) = u128::try_from(&cofactor) {
             let large_factors = factorize128(cofactor);
             return PrimalityResult {
@@ -51,23 +51,22 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
             };
         }
     }
-    info!("Starting larger trial divisions for a {}-bit number", p + q);
+    info!("Starting larger trial divisions for a {}-bit number", p + p);
     let mut divisions_done = 0;
-    let report_progress_every = match p + q {
+    let report_progress_every = match p {
         0..10_000_000 => 1 << 24,
-        10_000_000..100_000_000 => 1 << 23,
-        _ => 1 << 22,
+        _ => 1 << 23,
     };
     let mut last_prime = SPECIALLY_HANDLED_PRIMES[SPECIALLY_HANDLED_PRIMES_COUNT - 1];
     let start_trials = Instant::now();
     let mut prime_iter = buffer.primes().skip(SPECIALLY_HANDLED_PRIMES_COUNT + 2);
-    let max_bits_in_prime = (p + q + 1) / 2;
+    let max_bits_in_prime = p + 1;
     loop {
         let prime = prime_iter.next().unwrap();
-        let power = trial_division(p, q, prime);
+        let power = trial_division(p, prime);
         if power > 0 {
             info!("Trial division found factor of {}^{} for a {}-bit number in {}",
-                prime, power, p+q, ReadableDuration(start_trials.elapsed()));
+                prime, power, p+p, ReadableDuration(start_trials.elapsed()));
             trial_factors.extend(iter::repeat(prime).take(power as usize));
             return PrimalityResult {
                 result: No,
@@ -76,14 +75,14 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
         }
         if let Some(square) = (prime as u128).checked_mul(prime as u128) && square.bits() as u64 > max_bits_in_prime {
             info!("Stopping trial divisions because we've reached the square root of a {}-bit number",
-                    p + q);
+                    p + p);
             break;
         }
         last_prime = prime;
         divisions_done += 1;
         if divisions_done % report_progress_every == 0 {
             info!("{} trial divisions done for a {}-bit number in {}",
-                      divisions_done, p + q, ReadableDuration(start_trials.elapsed()));
+                      divisions_done, p + p, ReadableDuration(start_trials.elapsed()));
         }
         if divisions_done >= MAX_TRIAL_DIVISIONS {
             break;
@@ -125,18 +124,17 @@ fn is_prime_with_trials(p: u64, q: u64, buffer: &mut PrimeBuffer) -> PrimalityRe
 }
 
 #[inline]
-fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
-    if prime == p || prime == q {
+fn trial_division(p: u64, prime: u64) -> u64 {
+    if prime == p {
         return 0;
     }
     let mut power = 0;
     let prime = prime as u128;
     let mut modulus = prime;
     while modulus < 1<<64 {
-        let remainder_p1 = (2 * modulus
-            + mod_exp(2u128, (p + q) as u128, modulus)
-            - mod_exp(2u128, p as u128, modulus)
-            - mod_exp(2u128, q as u128, modulus))
+        let mod_exp_p = mod_exp(2u128, p as u128, modulus);
+        let remainder_p1 = (modulus
+            + mod_exp_p * (mod_exp_p - 2))
             % modulus;
         if remainder_p1 == 1 {
             modulus *= prime;
@@ -148,15 +146,12 @@ fn trial_division(p: u64, q: u64, prime: u64) -> u64 {
     let prime = BigUint::from(prime);
     let one = BigUint::from(1u8);
     let two = BigUint::from(2u8);
-    let p_plus_q = BigUint::from(p + q);
     let p = BigUint::from(p);
-    let q = BigUint::from(q);
     let mut modulus = BigUint::from(modulus);
     loop {
-        let remainder_p1 = ((&modulus << 1)
-            + two.modpow(&p_plus_q, &modulus)
-            - two.modpow(&p, &modulus)
-            - two.modpow(&q, &modulus))
+        let mod_exp_p = two.modpow(&p, &modulus);
+        let remainder_p1 = (&modulus
+            + &mod_exp_p * (&mod_exp_p - &two))
             % &modulus;
         if remainder_p1 == one {
             modulus *= &prime;
@@ -203,37 +198,10 @@ impl Display for PrimalityResult {
 fn main() {
     simple_logger::init().unwrap();
     let mut buffer = PrimeBuffer::new();
-    for p_i in (3..(MERSENNE_EXPONENTS.len() - 5)) {
-        let p = MERSENNE_EXPONENTS[p_i];
-        let min_q_i = if p_i == 3 {
-          21
-        } else {
-          p_i
-        };
-        for q_i in (min_q_i..MERSENNE_EXPONENTS.len()) {
-            let q = MERSENNE_EXPONENTS[q_i];
-            if p + q <= 128 {
-                let m_p = (1u64 << p) - 1;
-                let m_q = (1u128 << q) - 1;
-                let productm2 = m_p as u128 * m_q - 2;
-                let start_factorize128 = Instant::now();
-                let factors = factorize128(productm2);
-                info!("factorize128 finished for {} in {}", productm2, ReadableDuration(start_factorize128.elapsed()));
-                let result = PrimalityResult {
-                    result: if factors.values().sum::<usize>() == 1 {
-                        Yes
-                    } else {
-                        No
-                    },
-                    source: format!("factorize128 gives factors: {:?}", factors).into(),
-                };
-                println!("{},{}: {}", p, q, result);
-            } else {
-                let result = is_prime_with_trials(p as u64, q as u64, &mut buffer);
-                println!("{},{}: {}", p, q, result);
-            }
+        for p in [110503u64, 859433, 13466917, 20996011, 30402457, 37156667].iter().copied() {
+                let result = is_prime_with_trials(p as u64, &mut buffer);
+                println!("{},{}: {}", p, p, result);
         }
-    }
 }
 
 struct ReadableDuration(Duration);
